@@ -40,6 +40,8 @@ class Chess
 	};
 
 	int figure_selected;
+	int flag_turn;
+	int flag_castle_00_white, flag_castle_000_white, flag_castle_00_black, flag_castle_000_black;
 
 public:
 
@@ -57,6 +59,12 @@ public:
 		s_figure.setTexture(t_figures);
 		window.create(VideoMode(800, 800), "kaaChess");
 		window.setFramerateLimit(60);
+
+		flag_turn = 1;
+		flag_castle_00_white = 1;
+		flag_castle_000_white = 1;
+		flag_castle_00_black = 1;
+		flag_castle_000_black = 1;
 	}
 
 	void clear_board()
@@ -153,7 +161,8 @@ public:
 
 		s_figure.setTextureRect(IntRect(figure_xy.x * CELL_SIZE, figure_xy.y * CELL_SIZE, CELL_SIZE, CELL_SIZE));
 		s_figure.setPosition(point.x - CELL_SIZE/2, point.y - CELL_SIZE/2);
-		window.draw(s_figure);	}
+		window.draw(s_figure);
+	}
 
 	void draw_figures()
 	{
@@ -190,7 +199,36 @@ public:
 			board[from.y][from.x] = figure_selected;
 			board[to.y][to.x] = 0;
 
+			if(figure_selected == K && PGN.substring(len-5, 4).toAnsiString() == "e1g1")
+			{
+				board[7][5] = 0;
+				board[7][7] = R;
+				flag_castle_00_white = 1;
+			}
+
+			if(figure_selected == K && PGN.substring(len-5, 4).toAnsiString() == "e1c1")
+			{
+				board[7][3] = 0;
+				board[7][0] = R;
+				flag_castle_000_white = 1;
+			}
+
+			if(figure_selected == -K && PGN.substring(len-5, 4).toAnsiString() == "e8g8")
+			{
+				board[0][5] = 0;
+				board[0][7] = -R;
+				flag_castle_00_black = 1;
+			}
+
+			if(figure_selected == -K && PGN.substring(len-5, 4).toAnsiString() == "e8c8")
+			{
+				board[0][3] = 0;
+				board[0][0] = -R;
+				flag_castle_000_black = 1;
+			}
+
 			PGN.erase(len - 5, 5);
+			flag_turn = -flag_turn;
 		}
 	}
 
@@ -283,6 +321,11 @@ public:
 
 	bool check_move(String coords_from, String coords_to, Vector2i from, Vector2i to)
 	{
+		bool rc;
+
+		if(figure_selected * flag_turn < 0)
+			return false;
+
 		if(from == to)
 			return false;
 
@@ -349,9 +392,64 @@ public:
 			case K:
 			case -K:
 				if(abs(from.x - to.x) > 1 || abs(from.y - to.y) > 1)
-					return false;
+				{
+					if(figure_selected == K && flag_castle_00_white == 1
+						&& from.y == 7 && from.x == 4 && to.y == 7 && to.x == 6
+						&& board[7][5] == 0 && board[7][6] == 0 && board[7][7] == R)
+					{
+						board[7][7] = 0;
+						board[7][5] = R;
+						flag_castle_00_white = 0;
+						rc = true;
+					}
+					else if(figure_selected == K && flag_castle_000_white == 1
+						&& from.y == 7 && from.x == 4 && to.y == 7 && to.x == 2
+						&& board[7][3] == 0 && board[7][2] == 0 && board[7][1] == 0 && board[7][0] == R)
+					{
+						board[7][0] = 0;
+						board[7][3] = R;
+						flag_castle_000_white = 0;
+						rc = true;
+					}
+					else if(figure_selected == -K && flag_castle_00_black == 1
+						&& from.y == 0 && from.x == 4 && to.y == 0 && to.x == 6
+						&& board[0][5] == 0 && board[0][6] == 0 && board[0][7] == -R)
+					{
+						board[0][7] = 0;
+						board[0][5] = -R;
+						flag_castle_00_black = 0;
+						rc = true;
+					}
+					else if(figure_selected == -K && flag_castle_000_black == 1
+						&& from.y == 0 && from.x == 4 && to.y == 0 && to.x == 2
+						&& board[0][3] == 0 && board[0][2] == 0 && board[0][1] == 0 && board[0][0] == -R)
+					{
+						board[0][0] = 0;
+						board[0][3] = -R;
+						flag_castle_000_black = 0;
+						rc = true;
+					}
+					else
+						rc = false;
 
-				return is_line_empty(from, to);
+					return rc;
+				}
+
+				rc = is_line_empty(from, to);
+				if(rc)
+				{
+					if(figure_selected == K)
+					{
+						flag_castle_00_white = 0;
+						flag_castle_000_white = 0;
+					}
+					if(figure_selected == -K)
+					{
+						flag_castle_00_black = 0;
+						flag_castle_000_black = 0;
+					}
+				}
+				return rc;
 
 				break;
 
@@ -366,7 +464,19 @@ public:
 				if(abs(from.x - to.x) > 0 && abs(from.y - to.y) > 0)
 					return false;
 
-				return is_line_empty(from, to);
+				rc = is_line_empty(from, to);
+				if(rc)
+				{
+					if(from.y == 7 && from.x == 0 && flag_castle_000_white == 1)
+						flag_castle_000_white = 0;
+					if(from.y == 7 && from.x == 7 && flag_castle_00_white == 1)
+						flag_castle_00_white = 0;
+					if(from.y == 0 && from.x == 0 && flag_castle_000_black == 1)
+						flag_castle_000_black = 0;
+					if(from.y == 0 && from.x == 7 && flag_castle_00_black == 1)
+						flag_castle_00_black = 0;
+				}
+				return rc;
 
 				break;
 
@@ -381,7 +491,9 @@ public:
 
 			case N:
 			case -N:
-				std::cout << abs(from.x - to.x) << abs(from.y - to.y) << std::endl;
+				if(figure_selected * board[to.y][to.x] > 0)
+					return false;
+
 				if(abs(from.x - to.x) == 2 && abs(from.y - to.y) == 1 
 					|| abs(from.x - to.x) == 1 && abs(from.y - to.y) == 2)
 				{}
@@ -449,16 +561,17 @@ public:
 
 						if(check_move(coords_from, coords_to, from, to))
 						{
-
 							board[to.y][to.x] = figure_selected;
 							PGN += coords_from;
 							PGN += coords_to;
 							PGN += " ";
+							flag_turn = -flag_turn;
+							std::cout << PGN.toAnsiString() << std::endl;
 						}
 						else board[from.y][from.x] = figure_selected;
 
-						std::cout << coords_from.toAnsiString();
-						std::cout << coords_to.toAnsiString() << std::endl;
+						// std::cout << coords_from.toAnsiString();
+						// std::cout << coords_to.toAnsiString() << std::endl;
 
 						// send_cmd(PGN.toAnsiString());
 					}
