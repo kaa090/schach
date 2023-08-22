@@ -30,7 +30,8 @@ const int P = 6;
 const int ROW_WHITE = 0;
 const int ROW_BLACK = 1;
 
-const char* engine_path = "D:\\prog\\cpp\\schach\\stockfish\\stockfish.exe";
+const char* ENGINE_PATH = "D:\\prog\\cpp\\schach\\stockfish\\stockfish.exe";
+const int ENGINE_DEPTH = 4;
 
 class Chess
 {
@@ -79,7 +80,7 @@ public:
 		flag_castle_000_black = 1;
 
 		proc_info = {0};
-		connect_engine(engine_path);
+		connect_engine(ENGINE_PATH);
 	}
 
 	void clear_board()
@@ -644,7 +645,7 @@ public:
 		DWORD bytes, bytes_available;
 		std::string str;
 
-		position = "position startpos moves " + position + "\ngo depth 10\n";
+		position = "position startpos moves " + position + "\ngo depth " + std::to_string(ENGINE_DEPTH) + "\n";
 
 		WriteFile(pipin_w, position.c_str(), position.length(), &bytes, NULL);
 		Sleep(500);
@@ -706,6 +707,9 @@ public:
 
 					if(event.key.code == Keyboard::Space)
 						make_engine_move();
+
+					if(event.key.code == Keyboard::P)
+						std::cout << UCI.toAnsiString() << std::endl;
 				}
 
 				if(event.type == Event::MouseButtonPressed)
