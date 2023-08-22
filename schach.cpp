@@ -14,7 +14,7 @@
 #include <iostream>
 #include <SFML/Graphics.hpp>
 
-#include <windows.h>
+// #include <windows.h>
 #include <stdio.h>
 #include <string>
 
@@ -30,8 +30,8 @@ const int P = 6;
 const int ROW_WHITE = 0;
 const int ROW_BLACK = 1;
 
-const char* ENGINE_PATH = "D:\\prog\\cpp\\schach\\stockfish\\stockfish.exe";
-const int ENGINE_DEPTH = 4;
+// const char* ENGINE_PATH = "D:\\prog\\cpp\\schach\\stockfish\\stockfish.exe";
+// const int ENGINE_DEPTH = 4;
 
 class Chess
 {
@@ -58,8 +58,8 @@ class Chess
 	int flag_castle_00_white, flag_castle_000_white, flag_castle_00_black, flag_castle_000_black;
 	Vector2i enpassant;
 
-	PROCESS_INFORMATION proc_info;
-	HANDLE pipin_w, pipin_r, pipout_w, pipout_r;
+	// PROCESS_INFORMATION proc_info;
+	// HANDLE pipin_w, pipin_r, pipout_w, pipout_r;
 
 public:
 
@@ -79,8 +79,8 @@ public:
 		flag_castle_00_black = 1;
 		flag_castle_000_black = 1;
 
-		proc_info = {0};
-		connect_engine(ENGINE_PATH);
+		// proc_info = {0};
+		// connect_engine(ENGINE_PATH);
 	}
 
 	void clear_board()
@@ -473,7 +473,7 @@ public:
 			else
 				rc = false;
 		}
-		else
+		else if(abs(from.y - to.y) <= 1 && abs(from.x - to.x) <= 1)
 		{
 			rc = is_line_empty(from, to);
 			if(rc)
@@ -490,6 +490,8 @@ public:
 				}
 			}
 		}
+		else
+			rc = false;
 
 		return rc;
 	}
@@ -600,7 +602,7 @@ public:
 		Vector2i from, to;
 		std::string engine_move;
 
-		engine_move = get_next_move(UCI.toAnsiString());
+		// engine_move = get_next_move(UCI.toAnsiString());
 
 		from = get_xy_by_chess_coords(engine_move.substr(0, 2));
 		to = get_xy_by_chess_coords(engine_move.substr(2, 2));
@@ -614,70 +616,70 @@ public:
 		board[from.y][from.x] = 0;
 	}
 
-	void connect_engine(const char* path)
-	{
-		STARTUPINFOW su_info = {0};
-		SECURITY_ATTRIBUTES sec_atts = {0};
+	// void connect_engine(const char* path)
+	// {
+	// 	STARTUPINFOW su_info = {0};
+	// 	SECURITY_ATTRIBUTES sec_atts = {0};
 
-		wchar_t wtext[80];
-		LPWSTR ptr = wtext;
-		mbstowcs(wtext, path, strlen(path) + 1);
+	// 	wchar_t wtext[80];
+	// 	LPWSTR ptr = wtext;
+	// 	mbstowcs(wtext, path, strlen(path) + 1);
 
-		sec_atts.nLength = sizeof(sec_atts);
-		sec_atts.bInheritHandle = TRUE;
-		sec_atts.lpSecurityDescriptor = NULL;
+	// 	sec_atts.nLength = sizeof(sec_atts);
+	// 	sec_atts.bInheritHandle = TRUE;
+	// 	sec_atts.lpSecurityDescriptor = NULL;
 
-		CreatePipe(&pipout_r, &pipout_w, &sec_atts, 0);
-		CreatePipe(&pipin_r, &pipin_w, &sec_atts, 0);
+	// 	CreatePipe(&pipout_r, &pipout_w, &sec_atts, 0);
+	// 	CreatePipe(&pipin_r, &pipin_w, &sec_atts, 0);
 
-		su_info.dwFlags = STARTF_USESHOWWINDOW | STARTF_USESTDHANDLES;
-		su_info.wShowWindow = SW_HIDE;
-		su_info.hStdInput = pipin_r;
-		su_info.hStdOutput = pipout_w;
-		su_info.hStdError = pipout_w;
+	// 	su_info.dwFlags = STARTF_USESHOWWINDOW | STARTF_USESTDHANDLES;
+	// 	su_info.wShowWindow = SW_HIDE;
+	// 	su_info.hStdInput = pipin_r;
+	// 	su_info.hStdOutput = pipout_w;
+	// 	su_info.hStdError = pipout_w;
 
-		CreateProcessW(NULL, ptr, NULL, NULL, TRUE, 0, NULL, NULL, &su_info, &proc_info);
-	}
+	// 	CreateProcessW(NULL, ptr, NULL, NULL, TRUE, 0, NULL, NULL, &su_info, &proc_info);
+	// }
 
-	std::string get_next_move(std::string position)
-	{
-		BYTE buffer[2048];
-		DWORD bytes, bytes_available;
-		std::string str;
+	// std::string get_next_move(std::string position)
+	// {
+	// 	BYTE buffer[2048];
+	// 	DWORD bytes, bytes_available;
+	// 	std::string str;
 
-		position = "position startpos moves " + position + "\ngo depth " + std::to_string(ENGINE_DEPTH) + "\n";
+	// 	position = "position startpos moves " + position + "\ngo depth " + std::to_string(ENGINE_DEPTH) + "\n";
 
-		WriteFile(pipin_w, position.c_str(), position.length(), &bytes, NULL);
-		Sleep(500);
-		PeekNamedPipe(pipout_r, buffer, sizeof(buffer), &bytes, &bytes_available, NULL);
-		do
-		{
-			ZeroMemory(buffer, sizeof(buffer));
-			if(!ReadFile(pipout_r, buffer, sizeof(buffer), &bytes, NULL) || !bytes) break;
-			buffer[bytes] = 0;
-			str += (char*)buffer;
-		}
-		while(bytes >= sizeof(buffer));
+	// 	WriteFile(pipin_w, position.c_str(), position.length(), &bytes, NULL);
+	// 	Sleep(500);
+	// 	PeekNamedPipe(pipout_r, buffer, sizeof(buffer), &bytes, &bytes_available, NULL);
+	// 	do
+	// 	{
+	// 		ZeroMemory(buffer, sizeof(buffer));
+	// 		if(!ReadFile(pipout_r, buffer, sizeof(buffer), &bytes, NULL) || !bytes) break;
+	// 		buffer[bytes] = 0;
+	// 		str += (char*)buffer;
+	// 	}
+	// 	while(bytes >= sizeof(buffer));
 
-		int n = str.find("bestmove");
-		if (n != -1)
-			return str.substr(n + 9, 4);
-		else
-			return "error";
-	}
+	// 	int n = str.find("bestmove");
+	// 	if (n != -1)
+	// 		return str.substr(n + 9, 4);
+	// 	else
+	// 		return "error";
+	// }
 
-	void close_connection()
-	{
-		DWORD bytes;
+	// void close_connection()
+	// {
+	// 	DWORD bytes;
 
-		WriteFile(pipin_w, "quit\n", 5, &bytes, NULL);
-		if(pipin_w != NULL) CloseHandle(pipin_w);
-		if(pipin_r != NULL) CloseHandle(pipin_r);
-		if(pipout_w != NULL) CloseHandle(pipout_w);
-		if(pipout_r != NULL) CloseHandle(pipout_r);
-		if(proc_info.hProcess != NULL) CloseHandle(proc_info.hProcess);
-		if(proc_info.hThread != NULL) CloseHandle(proc_info.hThread);
-	}
+	// 	WriteFile(pipin_w, "quit\n", 5, &bytes, NULL);
+	// 	if(pipin_w != NULL) CloseHandle(pipin_w);
+	// 	if(pipin_r != NULL) CloseHandle(pipin_r);
+	// 	if(pipout_w != NULL) CloseHandle(pipout_w);
+	// 	if(pipout_r != NULL) CloseHandle(pipout_r);
+	// 	if(proc_info.hProcess != NULL) CloseHandle(proc_info.hProcess);
+	// 	if(proc_info.hThread != NULL) CloseHandle(proc_info.hThread);
+	// }
 
 	void run()
 	{
@@ -747,7 +749,7 @@ public:
 							UCI += " ";
 							flag_turn = -flag_turn;
 
-							make_engine_move();
+							// make_engine_move();
 						}
 						else 
 							board[from.y][from.x] = figure_selected;
