@@ -1,5 +1,22 @@
+//доработать:
+// - проверка короля на шах
+// - проверка рокировки
+// - отмена хода, возврат взятых фигур
+// - отмена хода, возврат права рокироки
+// - подсветка последнего хода
+// - подсветка шаха и мата
+// - stockfish для linux
+// - выгрузка FEN
+// - выгрузка PGN
+// - смена сторон
+// - редактор
+
 #include <iostream>
 #include <SFML/Graphics.hpp>
+
+#include <windows.h>
+#include <stdio.h>
+#include <string>
 
 using namespace sf;
 
@@ -13,16 +30,11 @@ const int P = 6;
 const int ROW_WHITE = 0;
 const int ROW_BLACK = 1;
 
-const std::string name_engine{"D:\\prog\\cpp\\schach\\stockfish\\stockfish.exe"};
-
-void send_cmd(const std::string& cmd)
-{
-	std::system((name_engine + ' ' + cmd).c_str());
-}
+const char* engine_path = "D:\\prog\\cpp\\schach\\stockfish\\stockfish.exe";
 
 class Chess
 {
-	String PGN;
+	String UCI;
 	RenderWindow window;
 	Sprite s_board, s_figure;
 	Texture t_board, t_figures;
@@ -39,9 +51,14 @@ class Chess
 		{ R, N, B, Q, K, B, N, R }
 	};
 
+	int counter_halfmove;
 	int figure_selected;
 	int flag_turn;
 	int flag_castle_00_white, flag_castle_000_white, flag_castle_00_black, flag_castle_000_black;
+	Vector2i enpassant;
+
+	PROCESS_INFORMATION proc_info;
+	HANDLE pipin_w, pipin_r, pipout_w, pipout_r;
 
 public:
 
@@ -49,11 +66,6 @@ public:
 	{
 		t_board.loadFromFile("rsc/board.png");
 		t_figures.loadFromFile("rsc/figures.png");
-
-		// t_board.loadFromFile("rsc/board0.png");
-		// t_figures.loadFromFile("rsc/figures0.png");
-
-		// t_board.loadFromFile("rsc/board_brown.png");
 
 		s_board.setTexture(t_board);
 		s_figure.setTexture(t_figures);
@@ -65,6 +77,9 @@ public:
 		flag_castle_000_white = 1;
 		flag_castle_00_black = 1;
 		flag_castle_000_black = 1;
+
+		proc_info = {0};
+		connect_engine(engine_path);
 	}
 
 	void clear_board()
@@ -80,27 +95,29 @@ public:
 
 	void set_FEN(String FEN)
 	{
+		int i = 0, j = 0;
+		int figure;
+		int delta;
+
 		clear_board();
 
-		int i = 0, j = 0;
-		int key_figure;
-		int delta;
-		for(int n = 0; n < FEN.getSize(); ++n)
-		{			key_figure = 0;
+		for(int n = 0; n < FEN.getSize(); n++)
+		{
+			figure = 0;
 
 			switch(FEN[n]){
-				case 'K': key_figure =  K; break;
-				case 'k': key_figure = -K; break;
-				case 'Q': key_figure =  Q; break;
-				case 'q': key_figure = -Q; break;
-				case 'B': key_figure =  B; break;
-				case 'b': key_figure = -B; break;
-				case 'N': key_figure =  N; break;
-				case 'n': key_figure = -N; break;
-				case 'R': key_figure =  R; break;
-				case 'r': key_figure = -R; break;
-				case 'P': key_figure =  P; break;
-				case 'p': key_figure = -P; break;
+				case 'K': figure =  K; break;
+				case 'k': figure = -K; break;
+				case 'Q': figure =  Q; break;
+				case 'q': figure = -Q; break;
+				case 'B': figure =  B; break;
+				case 'b': figure = -B; break;
+				case 'N': figure =  N; break;
+				case 'n': figure = -N; break;
+				case 'R': figure =  R; break;
+				case 'r': figure = -R; break;
+				case 'P': figure =  P; break;
+				case 'p': figure = -P; break;
 				case '/': i++; j = 0; break;
 				case '1':
 				case '2':
@@ -115,10 +132,11 @@ public:
 					break;
 			}
 
-			if(key_figure) 
+			if(figure) 
 			{
-				board[i][j] = key_figure;
-				j++;			}
+				board[i][j] = figure;
+				j++;
+			}
 		}
 	}
 
@@ -189,45 +207,45 @@ public:
 		Vector2i from, to;
 		size_t len;
 
-		len = PGN.getSize();
+		len = UCI.getSize();
 
 		if( len >= 5)
 		{
-			from = get_xy_by_chess_coords(PGN.substring(len - 5, 2).toAnsiString());
-			to = get_xy_by_chess_coords(PGN.substring(len - 3, 2).toAnsiString());
+			from = get_xy_by_chess_coords(UCI.substring(len - 5, 2).toAnsiString());
+			to = get_xy_by_chess_coords(UCI.substring(len - 3, 2).toAnsiString());
 			figure_selected = board[to.y][to.x];
 			board[from.y][from.x] = figure_selected;
 			board[to.y][to.x] = 0;
 
-			if(figure_selected == K && PGN.substring(len-5, 4).toAnsiString() == "e1g1")
+			if(figure_selected == K && UCI.substring(len-5, 4).toAnsiString() == "e1g1")
 			{
 				board[7][5] = 0;
 				board[7][7] = R;
 				flag_castle_00_white = 1;
 			}
 
-			if(figure_selected == K && PGN.substring(len-5, 4).toAnsiString() == "e1c1")
+			if(figure_selected == K && UCI.substring(len-5, 4).toAnsiString() == "e1c1")
 			{
 				board[7][3] = 0;
 				board[7][0] = R;
 				flag_castle_000_white = 1;
 			}
 
-			if(figure_selected == -K && PGN.substring(len-5, 4).toAnsiString() == "e8g8")
+			if(figure_selected == -K && UCI.substring(len-5, 4).toAnsiString() == "e8g8")
 			{
 				board[0][5] = 0;
 				board[0][7] = -R;
 				flag_castle_00_black = 1;
 			}
 
-			if(figure_selected == -K && PGN.substring(len-5, 4).toAnsiString() == "e8c8")
+			if(figure_selected == -K && UCI.substring(len-5, 4).toAnsiString() == "e8c8")
 			{
 				board[0][3] = 0;
 				board[0][0] = -R;
 				flag_castle_000_black = 1;
 			}
 
-			PGN.erase(len - 5, 5);
+			UCI.erase(len - 5, 5);
 			flag_turn = -flag_turn;
 		}
 	}
@@ -313,202 +331,356 @@ public:
 			}
 		}
 
-		if(figure_selected * board[to.y][to.x] > 0)
-			return false;
-
 		return true;
 	}
 
-	bool check_move(String coords_from, String coords_to, Vector2i from, Vector2i to)
+	bool check_enpassant_capture(Vector2i from, Vector2i to)
 	{
-		bool rc;
+		int y_captured;
 
-		if(figure_selected * flag_turn < 0)
-			return false;
-
-		if(from == to)
-			return false;
-
-		switch(figure_selected)
+		if(figure_selected == P && to.y == enpassant.y && to.x == enpassant.x && from.y == 3
+			|| figure_selected == -P && to.y == enpassant.y && to.x == enpassant.x && from.y == 4)
 		{
-			case P: 
-				if(from.y <= to.y || abs(from.x - to.x) > 1 || abs(from.y - to.y) > 1 && to.y != 4
-					|| from.x == to.x && from.y - to.y == 1 && board[to.y][to.x] != 0)
-					return false;
+			if(figure_selected == P)
+				y_captured = enpassant.y + 1;
+			else if(figure_selected == -P)
+				y_captured = enpassant.y - 1;
 
-				if(abs(from.x - to.x) == 1 && from.y - to.y == 1)
-					if(board[to.y][to.x] >= 0)
-						return false;
+			board[y_captured][enpassant.x] = 0;
+			return true;
+		}
+		else
+			return false;
+	}
 
-				if(to.y == 4)
-				{
-					if(from.x == to.x && 
-						(from.y == (to.y + 1) && board[to.y][to.x] == 0
-							||
-						 from.y == (to.y + 2) && board[to.y][to.x] == 0 && board[to.y + 1][to.x] == 0
-						)
-					)
-					{
-						// ok
-					}
-					else 
-						return false;
-				}
+	bool check_king_checked(Vector2i from, Vector2i to)
+	{
+		bool rc = false;
 
+		return rc;
+	}
+
+	bool check_move_pawn(Vector2i from, Vector2i to)
+	{
+		bool rc = true;
+
+		if(check_enpassant_capture(from, to))
+			return true;
+
+		if(figure_selected == P)
+		{
+			if(from.y <= to.y 
+				|| abs(from.x - to.x) > 1
+				|| abs(from.y - to.y) > 1 && to.y != 4
+				|| abs(from.x - to.x) == 1 && (from.y != to.y + 1 || board[to.y][to.x] >= 0)
+				|| from.x == to.x && from.y == to.y + 1 && board[to.y][to.x] != 0
+				|| from.x == to.x && from.y == 6 && to.y == 4 && (board[5][to.x] != 0 || board[4][to.x] != 0))
+				rc = false;
+			else
+			{
 				if(to.y == 0)
 					figure_selected = Q;
 
-				break;
-
-			case -P: 
-				if(from.y >= to.y || abs(from.x - to.x) > 1 || abs(from.y - to.y) > 1 && to.y != 3
-					|| from.x == to.x && from.y - to.y == -1 && board[to.y][to.x] != 0)
-					return false;
-
-				if(abs(from.x - to.x) == 1 && from.y - to.y == -1)
-					if(board[to.y][to.x] <= 0)
-						return false;
-
-				if(to.y == 3)
+				if(from.x == to.x && from.y == 6 && to.y == 4 && board[5][to.x] == 0 && board[4][to.x] == 0)
 				{
-					if(from.x == to.x && 
-						(from.y == (to.y - 1) && board[to.y][to.x] == 0
-							||
-						 from.y == (to.y - 2) && board[to.y][to.x] == 0 && board[to.y - 1][to.x] == 0
-						)
-					)
-					{
-						// ok
-					}
-					else 
-						return false;
+					enpassant.x = from.x;
+					enpassant.y = 5;
 				}
+				else
+				{
+					enpassant.y = 0;
+					enpassant.x = 0;
+				}
+			}
+		}
 
+		else if(figure_selected == -P)
+		{
+			if(from.y >= to.y 
+				|| abs(from.x - to.x) > 1
+				|| abs(from.y - to.y) > 1 && to.y != 3
+				|| abs(from.x - to.x) == 1 && (from.y != to.y - 1 || board[to.y][to.x] <= 0)
+				|| from.x == to.x && from.y == to.y - 1 && board[to.y][to.x] != 0
+				|| from.x == to.x && from.y == 1 && to.y == 3 && (board[2][to.x] != 0 || board[3][to.x] != 0))
+				rc = false;
+			else
+			{
 				if(to.y == 7)
 					figure_selected = -Q;
 
-				break;
-
-			case K:
-			case -K:
-				if(abs(from.x - to.x) > 1 || abs(from.y - to.y) > 1)
+				if(from.x == to.x && from.y == 1 && to.y == 3 && board[2][to.x] == 0 && board[3][to.x] == 0)
 				{
-					if(figure_selected == K && flag_castle_00_white == 1
-						&& from.y == 7 && from.x == 4 && to.y == 7 && to.x == 6
-						&& board[7][5] == 0 && board[7][6] == 0 && board[7][7] == R)
-					{
-						board[7][7] = 0;
-						board[7][5] = R;
-						flag_castle_00_white = 0;
-						rc = true;
-					}
-					else if(figure_selected == K && flag_castle_000_white == 1
-						&& from.y == 7 && from.x == 4 && to.y == 7 && to.x == 2
-						&& board[7][3] == 0 && board[7][2] == 0 && board[7][1] == 0 && board[7][0] == R)
-					{
-						board[7][0] = 0;
-						board[7][3] = R;
-						flag_castle_000_white = 0;
-						rc = true;
-					}
-					else if(figure_selected == -K && flag_castle_00_black == 1
-						&& from.y == 0 && from.x == 4 && to.y == 0 && to.x == 6
-						&& board[0][5] == 0 && board[0][6] == 0 && board[0][7] == -R)
-					{
-						board[0][7] = 0;
-						board[0][5] = -R;
-						flag_castle_00_black = 0;
-						rc = true;
-					}
-					else if(figure_selected == -K && flag_castle_000_black == 1
-						&& from.y == 0 && from.x == 4 && to.y == 0 && to.x == 2
-						&& board[0][3] == 0 && board[0][2] == 0 && board[0][1] == 0 && board[0][0] == -R)
-					{
-						board[0][0] = 0;
-						board[0][3] = -R;
-						flag_castle_000_black = 0;
-						rc = true;
-					}
-					else
-						rc = false;
-
-					return rc;
+					enpassant.x = from.x;
+					enpassant.y = 2;
 				}
-
-				rc = is_line_empty(from, to);
-				if(rc)
-				{
-					if(figure_selected == K)
-					{
-						flag_castle_00_white = 0;
-						flag_castle_000_white = 0;
-					}
-					if(figure_selected == -K)
-					{
-						flag_castle_00_black = 0;
-						flag_castle_000_black = 0;
-					}
-				}
-				return rc;
-
-				break;
-
-			case Q:
-			case -Q:
-				return is_line_empty(from, to);
-
-				break;
-
-			case R:
-			case -R:
-				if(abs(from.x - to.x) > 0 && abs(from.y - to.y) > 0)
-					return false;
-
-				rc = is_line_empty(from, to);
-				if(rc)
-				{
-					if(from.y == 7 && from.x == 0 && flag_castle_000_white == 1)
-						flag_castle_000_white = 0;
-					if(from.y == 7 && from.x == 7 && flag_castle_00_white == 1)
-						flag_castle_00_white = 0;
-					if(from.y == 0 && from.x == 0 && flag_castle_000_black == 1)
-						flag_castle_000_black = 0;
-					if(from.y == 0 && from.x == 7 && flag_castle_00_black == 1)
-						flag_castle_00_black = 0;
-				}
-				return rc;
-
-				break;
-
-			case B:
-			case -B:
-				if(from.x - to.x == 0 || from.y - to.y == 0)
-					return false;
-
-				return is_line_empty(from, to);
-
-				break;
-
-			case N:
-			case -N:
-				if(figure_selected * board[to.y][to.x] > 0)
-					return false;
-
-				if(abs(from.x - to.x) == 2 && abs(from.y - to.y) == 1 
-					|| abs(from.x - to.x) == 1 && abs(from.y - to.y) == 2)
-				{}
 				else
-					return false;
-
-				break;
+				{
+					enpassant.y = 0;
+					enpassant.x = 0;
+				}
+			}
 		}
-		return true;
+
+		return rc;
+	}
+
+	bool check_move_king(Vector2i from, Vector2i to)
+	{
+		bool rc = true;
+
+		if(check_king_checked(from, to))
+			return false;
+
+		if(abs(from.x - to.x) > 1)
+		{
+			if(figure_selected == K && flag_castle_00_white == 1
+				&& from.y == 7 && from.x == 4 && to.y == 7 && to.x == 6
+				&& board[7][5] == 0 && board[7][6] == 0 && board[7][7] == R)
+			{
+				board[7][7] = 0;
+				board[7][5] = R;
+				flag_castle_00_white = 0;
+				rc = true;
+			}
+			else if(figure_selected == K && flag_castle_000_white == 1
+				&& from.y == 7 && from.x == 4 && to.y == 7 && to.x == 2
+				&& board[7][3] == 0 && board[7][2] == 0 && board[7][1] == 0 && board[7][0] == R)
+			{
+				board[7][0] = 0;
+				board[7][3] = R;
+				flag_castle_000_white = 0;
+				rc = true;
+			}
+			else if(figure_selected == -K && flag_castle_00_black == 1
+				&& from.y == 0 && from.x == 4 && to.y == 0 && to.x == 6
+				&& board[0][5] == 0 && board[0][6] == 0 && board[0][7] == -R)
+			{
+				board[0][7] = 0;
+				board[0][5] = -R;
+				flag_castle_00_black = 0;
+				rc = true;
+			}
+			else if(figure_selected == -K && flag_castle_000_black == 1
+				&& from.y == 0 && from.x == 4 && to.y == 0 && to.x == 2
+				&& board[0][3] == 0 && board[0][2] == 0 && board[0][1] == 0 && board[0][0] == -R)
+			{
+				board[0][0] = 0;
+				board[0][3] = -R;
+				flag_castle_000_black = 0;
+				rc = true;
+			}
+			else
+				rc = false;
+		}
+		else
+		{
+			rc = is_line_empty(from, to);
+			if(rc)
+			{
+				if(figure_selected == K)
+				{
+					flag_castle_00_white = 0;
+					flag_castle_000_white = 0;
+				}
+				if(figure_selected == -K)
+				{
+					flag_castle_00_black = 0;
+					flag_castle_000_black = 0;
+				}
+			}
+		}
+
+		return rc;
+	}
+
+	bool check_move_queen(Vector2i from, Vector2i to)
+	{
+		return is_line_empty(from, to);
+	}
+
+	bool check_move_rook(Vector2i from, Vector2i to)
+	{
+		bool rc = true;
+
+		if(abs(from.x - to.x) > 0 && abs(from.y - to.y) > 0)
+			rc = false;
+		else
+		{
+			rc = is_line_empty(from, to);
+			if(rc)
+			{
+				if(from.y == 7 && from.x == 0 && flag_castle_000_white == 1)
+					flag_castle_000_white = 0;
+				if(from.y == 7 && from.x == 7 && flag_castle_00_white == 1)
+					flag_castle_00_white = 0;
+				if(from.y == 0 && from.x == 0 && flag_castle_000_black == 1)
+					flag_castle_000_black = 0;
+				if(from.y == 0 && from.x == 7 && flag_castle_00_black == 1)
+					flag_castle_00_black = 0;
+			}
+		}
+
+		return rc;
+	}
+
+	bool check_move_bishop(Vector2i from, Vector2i to)
+	{
+		bool rc = true;
+
+		if(from.x - to.x == 0 || from.y - to.y == 0)
+			rc = false;
+		else
+			rc = is_line_empty(from, to);
+
+		return rc;
+	}
+
+	bool check_move_knight(Vector2i from, Vector2i to)
+	{
+		bool rc = true;
+
+		if(abs(from.x - to.x) == 2 && abs(from.y - to.y) == 1 
+			|| abs(from.x - to.x) == 1 && abs(from.y - to.y) == 2)
+			rc = true;
+		else
+			rc = false;
+
+		return rc;
+	}
+
+	bool check_move(Vector2i from, Vector2i to)
+	{
+		bool rc = true;
+
+		if(figure_selected * flag_turn < 0
+			|| from == to
+			|| figure_selected * board[to.y][to.x] > 0)
+			rc = false;
+		else
+		{
+			switch(figure_selected)
+			{
+				case P:
+				case -P:
+					rc = check_move_pawn(from, to);
+					break;
+
+				case K:
+				case -K:
+					rc = check_move_king(from, to);
+					break;
+
+				case Q:
+				case -Q:
+					rc = check_move_queen(from, to);
+					break;
+
+				case R:
+				case -R:
+					rc = check_move_rook(from, to);
+					break;
+
+				case B:
+				case -B:
+					rc = check_move_bishop(from, to);
+					break;
+
+				case N:
+				case -N:
+					rc = check_move_knight(from, to);
+					break;
+			}
+		}
+		return rc;
+	}
+
+	void make_engine_move()
+	{
+		Vector2i from, to;
+		std::string engine_move;
+
+		engine_move = get_next_move(UCI.toAnsiString());
+
+		from = get_xy_by_chess_coords(engine_move.substr(0, 2));
+		to = get_xy_by_chess_coords(engine_move.substr(2, 2));
+
+		UCI += get_chess_coords_by_xy(from);
+		UCI += get_chess_coords_by_xy(to);
+		UCI += " ";
+		flag_turn = -flag_turn;
+
+		board[to.y][to.x] = board[from.y][from.x];
+		board[from.y][from.x] = 0;
+	}
+
+	void connect_engine(const char* path)
+	{
+		STARTUPINFOW su_info = {0};
+		SECURITY_ATTRIBUTES sec_atts = {0};
+
+		wchar_t wtext[80];
+		LPWSTR ptr = wtext;
+		mbstowcs(wtext, path, strlen(path) + 1);
+
+		sec_atts.nLength = sizeof(sec_atts);
+		sec_atts.bInheritHandle = TRUE;
+		sec_atts.lpSecurityDescriptor = NULL;
+
+		CreatePipe(&pipout_r, &pipout_w, &sec_atts, 0);
+		CreatePipe(&pipin_r, &pipin_w, &sec_atts, 0);
+
+		su_info.dwFlags = STARTF_USESHOWWINDOW | STARTF_USESTDHANDLES;
+		su_info.wShowWindow = SW_HIDE;
+		su_info.hStdInput = pipin_r;
+		su_info.hStdOutput = pipout_w;
+		su_info.hStdError = pipout_w;
+
+		CreateProcessW(NULL, ptr, NULL, NULL, TRUE, 0, NULL, NULL, &su_info, &proc_info);
+	}
+
+	std::string get_next_move(std::string position)
+	{
+		BYTE buffer[2048];
+		DWORD bytes, bytes_available;
+		std::string str;
+
+		position = "position startpos moves " + position + "\ngo depth 10\n";
+
+		WriteFile(pipin_w, position.c_str(), position.length(), &bytes, NULL);
+		Sleep(500);
+		PeekNamedPipe(pipout_r, buffer, sizeof(buffer), &bytes, &bytes_available, NULL);
+		do
+		{
+			ZeroMemory(buffer, sizeof(buffer));
+			if(!ReadFile(pipout_r, buffer, sizeof(buffer), &bytes, NULL) || !bytes) break;
+			buffer[bytes] = 0;
+			str += (char*)buffer;
+		}
+		while(bytes >= sizeof(buffer));
+
+		int n = str.find("bestmove");
+		if (n != -1)
+			return str.substr(n + 9, 4);
+		else
+			return "error";
+	}
+
+	void close_connection()
+	{
+		DWORD bytes;
+
+		WriteFile(pipin_w, "quit\n", 5, &bytes, NULL);
+		if(pipin_w != NULL) CloseHandle(pipin_w);
+		if(pipin_r != NULL) CloseHandle(pipin_r);
+		if(pipout_w != NULL) CloseHandle(pipout_w);
+		if(pipout_r != NULL) CloseHandle(pipout_r);
+		if(proc_info.hProcess != NULL) CloseHandle(proc_info.hProcess);
+		if(proc_info.hThread != NULL) CloseHandle(proc_info.hThread);
 	}
 
 	void run()
 	{
 		Vector2i mouse_xy, from, to;
-		String coords_from, coords_to;
 		bool selected = false;
 
 		Event event;
@@ -526,12 +698,14 @@ public:
 
 				if(event.type == Event::KeyPressed)
 				{
-					if(event.key.code == Keyboard::Escape) window.close();
+					if(event.key.code == Keyboard::Escape) 
+						window.close();
 
 					if(event.key.code == Keyboard::BackSpace)
-					{
 						move_back();
-					}
+
+					if(event.key.code == Keyboard::Space)
+						make_engine_move();
 				}
 
 				if(event.type == Event::MouseButtonPressed)
@@ -556,24 +730,23 @@ public:
 						to.x /= CELL_SIZE;
 						to.y /= CELL_SIZE;
 
-						coords_from = get_chess_coords_by_xy(from);
-						coords_to = get_chess_coords_by_xy(to);
-
-						if(check_move(coords_from, coords_to, from, to))
+						if(check_move(from, to))
 						{
 							board[to.y][to.x] = figure_selected;
-							PGN += coords_from;
-							PGN += coords_to;
-							PGN += " ";
+							if (figure_selected != P && figure_selected != -P)
+							{
+								enpassant.y = 0;
+								enpassant.x = 0;
+							}
+							UCI += get_chess_coords_by_xy(from);
+							UCI += get_chess_coords_by_xy(to);
+							UCI += " ";
 							flag_turn = -flag_turn;
-							std::cout << PGN.toAnsiString() << std::endl;
+
+							make_engine_move();
 						}
-						else board[from.y][from.x] = figure_selected;
-
-						// std::cout << coords_from.toAnsiString();
-						// std::cout << coords_to.toAnsiString() << std::endl;
-
-						// send_cmd(PGN.toAnsiString());
+						else 
+							board[from.y][from.x] = figure_selected;
 					}
 				}
 			}
