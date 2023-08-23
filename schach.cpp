@@ -2,7 +2,7 @@
 // - проверка короля на шах
 // - проверка рокировки
 // - отмена хода, возврат взятых фигур
-// - отмена хода, возврат права рокироки
+// - отмена хода, возврат права рокировки
 // - подсветка последнего хода
 // - подсветка шаха и мата
 // - stockfish для linux
@@ -14,9 +14,10 @@
 #include <iostream>
 #include <SFML/Graphics.hpp>
 
-// #include <windows.h>
+#include <windows.h>
 #include <stdio.h>
 #include <string>
+#include <sstream>
 
 using namespace sf;
 
@@ -30,16 +31,17 @@ const int P = 6;
 const int ROW_WHITE = 0;
 const int ROW_BLACK = 1;
 
-// const char* ENGINE_PATH = "D:\\prog\\cpp\\schach\\stockfish\\stockfish.exe";
-// const int ENGINE_DEPTH = 4;
+const char* ENGINE_PATH = "D:\\prog\\cpp\\schach\\stockfish\\stockfish.exe";
+const int ENGINE_DEPTH = 1;
 
 class Chess
 {
-	String UCI;
 	RenderWindow window;
 	Sprite s_board, s_figure;
 	Texture t_board, t_figures;
 
+	String UCI;
+	std::string PGN;
 	// int board[8][8];
 	int board[8][8] = {
 		{-R,-N,-B,-Q,-K,-B,-N,-R },
@@ -58,8 +60,9 @@ class Chess
 	int flag_castle_00_white, flag_castle_000_white, flag_castle_00_black, flag_castle_000_black;
 	Vector2i enpassant;
 
-	// PROCESS_INFORMATION proc_info;
-	// HANDLE pipin_w, pipin_r, pipout_w, pipout_r;
+	int play_with_engine = 0;
+	PROCESS_INFORMATION proc_info;
+	HANDLE pipin_w, pipin_r, pipout_w, pipout_r;
 
 public:
 
@@ -73,28 +76,26 @@ public:
 		window.create(VideoMode(800, 800), "kaaChess");
 		window.setFramerateLimit(60);
 
+		counter_halfmove = 0;
 		flag_turn = 1;
 		flag_castle_00_white = 1;
 		flag_castle_000_white = 1;
 		flag_castle_00_black = 1;
 		flag_castle_000_black = 1;
 
-		// proc_info = {0};
-		// connect_engine(ENGINE_PATH);
+		proc_info = {0};
+		if(play_with_engine)
+			connect_engine(ENGINE_PATH);
 	}
 
 	void clear_board()
 	{
 		for(int i = 0; i < 8; ++i)
-		{
 			for(int j = 0; j < 8; ++j)
-			{
 				board[i][j] = 0;
-			}
-		}
 	}
 
-	void set_FEN(String FEN)
+	void set_FEN(std::string FEN)
 	{
 		int i = 0, j = 0;
 		int figure;
@@ -102,7 +103,7 @@ public:
 
 		clear_board();
 
-		for(int n = 0; n < FEN.getSize(); n++)
+		for(int n = 0; n < FEN.length(); n++)
 		{
 			figure = 0;
 
@@ -203,7 +204,143 @@ public:
 		}
 	}
 
+	int get_figure_code(char figure)
+	{
+		switch(figure)
+		{
+			case 'p': return -P;
+			case 'P': return P;
+			case 'r': return -R;
+			case 'R': return R;
+			case 'n': return -N;
+			case 'N': return N;
+			case 'b': return -B;
+			case 'B': return B;
+			case 'q': return -Q;
+			case 'Q': return Q;
+			case 'k': return -K;
+			case 'K': return K;
+		}
+	}
+
+	char get_figure_char(int figure)
+	{
+		switch(figure)
+		{
+			case P:		return 'P';
+			case R:		return 'R';
+			case N:		return 'N';
+			case B:		return 'B';
+			case Q:		return 'Q';
+			case K:		return 'K';
+			case -P:	return 'p';
+			case -R:	return 'r';
+			case -N:	return 'n';
+			case -B:	return 'b';
+			case -Q:	return 'q';
+			case -K:	return 'k';
+		}
+	}
+
 	void move_back()
+	{
+		std::string last_move, sfrom, sto, castle_side;
+		std::stringstream s(PGN);
+		Vector2i from, to;
+
+		int figure = 0;
+		int figure_enemy = 0;
+		int figure_promo = 0;
+		int find_x;
+		int find_y;
+		int find_z;
+
+		while(s >> last_move){}
+
+		if(last_move == "") return;
+
+		if(last_move == "Ke1g1~~")
+		{
+			board[7][4] = K;
+			board[7][5] = 0;
+			board[7][6] = 0;
+			board[7][7] = R;
+			flag_castle_00_white = 1;
+		}
+		else if(last_move == "Ke1c1~~")
+		{
+			board[7][4] = K;
+			board[7][2] = 0;
+			board[7][3] = 0;
+			board[7][0] = R;
+			flag_castle_000_white = 1;
+		}
+		else if(last_move == "ke8g8~~")
+		{
+			board[0][4] = -K;
+			board[0][5] = 0;
+			board[0][6] = 0;
+			board[0][7] = -R;
+			flag_castle_00_black = 1;
+		}
+		else if(last_move == "ke8c8~~")
+		{
+			board[0][4] = -K;
+			board[0][2] = 0;
+			board[0][3] = 0;
+			board[0][0] = -R;
+			flag_castle_000_black = 1;
+		}
+		else
+		{
+			figure = get_figure_code(last_move[0]);
+
+			sfrom = last_move.substr(1, 2);
+			sto = last_move.substr(3, 2);
+			from = get_xy_by_chess_coords(sfrom);
+			to = get_xy_by_chess_coords(sto);
+
+			find_x = last_move.find('x');
+			find_y = last_move.find('=');
+			find_z = last_move.find('~');
+
+			if(find_x!=-1)
+			{
+				figure_enemy = get_figure_code(last_move[find_x+1]);
+			}
+
+			if(find_y!=-1)
+			{
+				figure_promo = get_figure_code(last_move[find_y+1]);
+			}
+
+			if(find_z!=-1)
+			{
+				if(last_move[find_z+1] == 'q')
+					flag_castle_000_white = 1;
+				else if(last_move[find_z+1] == 'k')
+					flag_castle_00_white = 1;
+				else
+				{
+					flag_castle_00_white = 1;
+					flag_castle_000_white = 1;
+				}
+			}
+
+			board[from.y][from.x] = figure;
+			board[to.y][to.x] = figure_enemy;
+		}
+
+		size_t len = UCI.getSize();
+		if( len >= 5) UCI.erase(len - 5, 5);
+
+		PGN.erase(PGN.find(last_move), last_move.length());
+
+		flag_turn = -flag_turn;
+		counter_halfmove--;
+	}
+
+	void move_back_UCI()
 	{
 		Vector2i from, to;
 		size_t len;
@@ -248,6 +385,7 @@ public:
 
 			UCI.erase(len - 5, 5);
 			flag_turn = -flag_turn;
+			counter_halfmove--;
 		}
 	}
 
@@ -599,97 +737,147 @@ public:
 
 	void make_engine_move()
 	{
+		int figure, figure_enemy;
 		Vector2i from, to;
 		std::string engine_move;
 
-		// engine_move = get_next_move(UCI.toAnsiString());
+		engine_move = get_next_move(UCI.toAnsiString());
 
 		from = get_xy_by_chess_coords(engine_move.substr(0, 2));
 		to = get_xy_by_chess_coords(engine_move.substr(2, 2));
-
-		UCI += get_chess_coords_by_xy(from);
-		UCI += get_chess_coords_by_xy(to);
-		UCI += " ";
-		flag_turn = -flag_turn;
-
+		figure = board[from.y][from.x];
+		figure_enemy = board[to.y][to.x];
 		board[to.y][to.x] = board[from.y][from.x];
 		board[from.y][from.x] = 0;
+
+		log_game(figure, from, to, figure_enemy);
+		flag_turn = -flag_turn;
+		counter_halfmove++;
 	}
 
-	// void connect_engine(const char* path)
-	// {
-	// 	STARTUPINFOW su_info = {0};
-	// 	SECURITY_ATTRIBUTES sec_atts = {0};
+	void connect_engine(const char* path)
+	{
+		STARTUPINFOW su_info = {0};
+		SECURITY_ATTRIBUTES sec_atts = {0};
 
-	// 	wchar_t wtext[80];
-	// 	LPWSTR ptr = wtext;
-	// 	mbstowcs(wtext, path, strlen(path) + 1);
+		wchar_t wtext[80];
+		LPWSTR ptr = wtext;
+		mbstowcs(wtext, path, strlen(path) + 1);
 
-	// 	sec_atts.nLength = sizeof(sec_atts);
-	// 	sec_atts.bInheritHandle = TRUE;
-	// 	sec_atts.lpSecurityDescriptor = NULL;
+		sec_atts.nLength = sizeof(sec_atts);
+		sec_atts.bInheritHandle = TRUE;
+		sec_atts.lpSecurityDescriptor = NULL;
 
-	// 	CreatePipe(&pipout_r, &pipout_w, &sec_atts, 0);
-	// 	CreatePipe(&pipin_r, &pipin_w, &sec_atts, 0);
+		CreatePipe(&pipout_r, &pipout_w, &sec_atts, 0);
+		CreatePipe(&pipin_r, &pipin_w, &sec_atts, 0);
 
-	// 	su_info.dwFlags = STARTF_USESHOWWINDOW | STARTF_USESTDHANDLES;
-	// 	su_info.wShowWindow = SW_HIDE;
-	// 	su_info.hStdInput = pipin_r;
-	// 	su_info.hStdOutput = pipout_w;
-	// 	su_info.hStdError = pipout_w;
+		su_info.dwFlags = STARTF_USESHOWWINDOW | STARTF_USESTDHANDLES;
+		su_info.wShowWindow = SW_HIDE;
+		su_info.hStdInput = pipin_r;
+		su_info.hStdOutput = pipout_w;
+		su_info.hStdError = pipout_w;
 
-	// 	CreateProcessW(NULL, ptr, NULL, NULL, TRUE, 0, NULL, NULL, &su_info, &proc_info);
-	// }
+		CreateProcessW(NULL, ptr, NULL, NULL, TRUE, 0, NULL, NULL, &su_info, &proc_info);
+	}
 
-	// std::string get_next_move(std::string position)
-	// {
-	// 	BYTE buffer[2048];
-	// 	DWORD bytes, bytes_available;
-	// 	std::string str;
+	std::string get_next_move(std::string position)
+	{
+		BYTE buffer[2048];
+		DWORD bytes, bytes_available;
+		std::string str;
 
-	// 	position = "position startpos moves " + position + "\ngo depth " + std::to_string(ENGINE_DEPTH) + "\n";
+		position = "position startpos moves " + position + "\ngo depth " + std::to_string(ENGINE_DEPTH) + "\n";
 
-	// 	WriteFile(pipin_w, position.c_str(), position.length(), &bytes, NULL);
-	// 	Sleep(500);
-	// 	PeekNamedPipe(pipout_r, buffer, sizeof(buffer), &bytes, &bytes_available, NULL);
-	// 	do
-	// 	{
-	// 		ZeroMemory(buffer, sizeof(buffer));
-	// 		if(!ReadFile(pipout_r, buffer, sizeof(buffer), &bytes, NULL) || !bytes) break;
-	// 		buffer[bytes] = 0;
-	// 		str += (char*)buffer;
-	// 	}
-	// 	while(bytes >= sizeof(buffer));
+		WriteFile(pipin_w, position.c_str(), position.length(), &bytes, NULL);
+		Sleep(500);
+		PeekNamedPipe(pipout_r, buffer, sizeof(buffer), &bytes, &bytes_available, NULL);
+		do
+		{
+			ZeroMemory(buffer, sizeof(buffer));
+			if(!ReadFile(pipout_r, buffer, sizeof(buffer), &bytes, NULL) || !bytes) break;
+			buffer[bytes] = 0;
+			str += (char*)buffer;
+		}
+		while(bytes >= sizeof(buffer));
 
-	// 	int n = str.find("bestmove");
-	// 	if (n != -1)
-	// 		return str.substr(n + 9, 4);
-	// 	else
-	// 		return "error";
-	// }
+		int n = str.find("bestmove");
+		if (n != -1)
+			return str.substr(n + 9, 4);
+		else
+			return "error";
+	}
 
-	// void close_connection()
-	// {
-	// 	DWORD bytes;
+	void close_connection()
+	{
+		DWORD bytes;
 
-	// 	WriteFile(pipin_w, "quit\n", 5, &bytes, NULL);
-	// 	if(pipin_w != NULL) CloseHandle(pipin_w);
-	// 	if(pipin_r != NULL) CloseHandle(pipin_r);
-	// 	if(pipout_w != NULL) CloseHandle(pipout_w);
-	// 	if(pipout_r != NULL) CloseHandle(pipout_r);
-	// 	if(proc_info.hProcess != NULL) CloseHandle(proc_info.hProcess);
-	// 	if(proc_info.hThread != NULL) CloseHandle(proc_info.hThread);
-	// }
+		WriteFile(pipin_w, "quit\n", 5, &bytes, NULL);
+		if(pipin_w != NULL) CloseHandle(pipin_w);
+		if(pipin_r != NULL) CloseHandle(pipin_r);
+		if(pipout_w != NULL) CloseHandle(pipout_w);
+		if(pipout_r != NULL) CloseHandle(pipout_r);
+		if(proc_info.hProcess != NULL) CloseHandle(proc_info.hProcess);
+		if(proc_info.hThread != NULL) CloseHandle(proc_info.hThread);
+	}
+
+	void log_game(int figure, Vector2i from, Vector2i to, int figure_enemy)
+	{
+		String fromS, toS;
+		std::string sfrom, sto;
+
+		fromS = get_chess_coords_by_xy(from);
+		toS = get_chess_coords_by_xy(to);
+		sfrom = fromS.toAnsiString();
+		sto = toS.toAnsiString();
+
+		UCI += fromS;
+		UCI += toS;
+		UCI += " ";
+
+		PGN += get_figure_char(figure) + sfrom + sto;
+
+		if(figure * figure_enemy < 0)
+		{
+			PGN += "x";
+			PGN += get_figure_char(figure_enemy);
+		}
+
+		if(figure == P && sto[1] == '8')
+			PGN += "=Q";
+		else if(figure == -P && sto[1] == '1')
+			PGN += "=q";
+		else if(figure == R && sfrom == "a1")
+			PGN += "~q";
+		else if(figure == R && sfrom == "h1")
+			PGN += "~k";
+		else if(figure == -R && sfrom == "a8")
+			PGN += "~q";
+		else if(figure == -R && sfrom == "h8")
+			PGN += "~k";
+		else if(figure == K || figure == -K)
+			PGN += "~~";
+
+		PGN += " ";
+	}
 
 	void run()
 	{
 		Vector2i mouse_xy, from, to;
 		bool selected = false;
+		bool engine_turn = false;
+		int figure;
+		int figure_enemy;
 
 		Event event;
 
 		while(window.isOpen())
 		{
+			if(engine_turn)
+			{
+				make_engine_move();
+				engine_turn = false;
+			}
+
 			while(window.pollEvent(event))
 			{
 				if(event.type == Event::Closed) window.close();
@@ -711,7 +899,10 @@ public:
 						make_engine_move();
 
 					if(event.key.code == Keyboard::P)
-						std::cout << UCI.toAnsiString() << std::endl;
+						std::cout << PGN << std::endl;
+
+					if(event.key.code == Keyboard::E)
+						play_with_engine ^= play_with_engine;
 				}
 
 				if(event.type == Event::MouseButtonPressed)
@@ -736,26 +927,30 @@ public:
 						to.x /= CELL_SIZE;
 						to.y /= CELL_SIZE;
 
+						figure = figure_selected;
 						if(check_move(from, to))
 						{
+							figure_enemy = board[to.y][to.x];
 							board[to.y][to.x] = figure_selected;
 							if (figure_selected != P && figure_selected != -P)
 							{
 								enpassant.y = 0;
 								enpassant.x = 0;
 							}
-							UCI += get_chess_coords_by_xy(from);
-							UCI += get_chess_coords_by_xy(to);
-							UCI += " ";
-							flag_turn = -flag_turn;
 
-							// make_engine_move();
+							log_game(figure, from, to, figure_enemy);
+							flag_turn = -flag_turn;
+							counter_halfmove++;
+
+							if(play_with_engine)
+								engine_turn = true;
 						}
 						else 
 							board[from.y][from.x] = figure_selected;
 					}
 				}
 			}
+
 			window.clear();
 			window.draw(s_board);
 			draw_figures();
@@ -775,7 +970,7 @@ int main(int argc, char const *argv[])
 	Chess c;
 
 	// c.set_FEN("4Q3/2b4r/7B/6R1/5k/8/7K/5q2");
-	// c.set_FEN("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR");
+	c.set_FEN("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR");
 	// c.set_FEN("6k1/4Rpb1/6pp/1Np5/8/7P/2P2nPK/3r4 w - - 0 31");
 
 	c.run();
