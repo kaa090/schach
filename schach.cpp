@@ -7,7 +7,6 @@
 // - подсветка шаха и мата
 // - stockfish для linux
 // - выгрузка FEN
-// - выгрузка PGN
 // - смена сторон
 // - редактор
 
@@ -21,7 +20,22 @@
 
 using namespace sf;
 
-const int CELL_SIZE = 100;
+const bool PLAY_WITH_ENGINE = 1;
+const int ENGINE_DEPTH = 1; // [1, 20]
+const int CHESS_SIZE = 0; // 0 - small, 1 - big
+
+//CHESS_SIZE = 0:
+const int CELL_SIZE_0 = 50;
+const char* PATH_BOARD_0 = "rsc/small_board.png";
+const char* PATH_PIECES_0 = "rsc/small_pieces.png";
+
+//CHESS_SIZE = 1:
+const int CELL_SIZE_1 = 100;
+const char* PATH_BOARD_1 = "rsc/big_board.png";
+const char* PATH_PIECES_1 = "rsc/big_pieces.png";
+
+const char* PATH_ENGINE = "D:\\prog\\cpp\\schach\\stockfish\\stockfish.exe";
+
 const int K = 1;
 const int Q = 2;
 const int B = 3;
@@ -31,18 +45,13 @@ const int P = 6;
 const int ROW_WHITE = 0;
 const int ROW_BLACK = 1;
 
-const char* ENGINE_PATH = "D:\\prog\\cpp\\schach\\stockfish\\stockfish.exe";
-const int ENGINE_DEPTH = 1;
-
 class Chess
 {
+	int cell_size;
 	RenderWindow window;
-	Sprite s_board, s_figure;
-	Texture t_board, t_figures;
+	Sprite s_board, s_piece;
+	Texture t_board, t_pieces;
 
-	String UCI;
-	std::string PGN;
-	// int board[8][8];
 	int board[8][8] = {
 		{-R,-N,-B,-Q,-K,-B,-N,-R },
 		{-P,-P,-P,-P,-P,-P,-P,-P },
@@ -54,13 +63,17 @@ class Chess
 		{ R, N, B, Q, K, B, N, R }
 	};
 
+	String UCI;
+	std::string PGN;
+	std::string FEN;
+
 	int counter_halfmove;
-	int figure_selected;
+	int piece_selected;
 	int flag_turn;
 	int flag_castle_00_white, flag_castle_000_white, flag_castle_00_black, flag_castle_000_black;
 	Vector2i enpassant;
 
-	int play_with_engine = 0;
+	bool play_with_engine;
 	PROCESS_INFORMATION proc_info;
 	HANDLE pipin_w, pipin_r, pipout_w, pipout_r;
 
@@ -68,12 +81,22 @@ public:
 
 	Chess()
 	{
-		t_board.loadFromFile("rsc/board.png");
-		t_figures.loadFromFile("rsc/figures.png");
+		if(CHESS_SIZE == 0)
+		{
+			cell_size = CELL_SIZE_0;
+			t_board.loadFromFile(PATH_BOARD_0);
+			t_pieces.loadFromFile(PATH_PIECES_0);
+		}
+		else if(CHESS_SIZE == 1)
+		{
+			cell_size = CELL_SIZE_1;
+			t_board.loadFromFile(PATH_BOARD_1);
+			t_pieces.loadFromFile(PATH_PIECES_1);
+		}
 
 		s_board.setTexture(t_board);
-		s_figure.setTexture(t_figures);
-		window.create(VideoMode(800, 800), "kaaChess");
+		s_piece.setTexture(t_pieces);
+		window.create(VideoMode(8*cell_size, 8*cell_size), "kaaChess");
 		window.setFramerateLimit(60);
 
 		counter_halfmove = 0;
@@ -84,8 +107,9 @@ public:
 		flag_castle_000_black = 1;
 
 		proc_info = {0};
-		if(play_with_engine)
-			connect_engine(ENGINE_PATH);
+		connect_engine(PATH_ENGINE);
+
+		play_with_engine = PLAY_WITH_ENGINE;
 	}
 
 	void clear_board()
@@ -95,31 +119,33 @@ public:
 				board[i][j] = 0;
 	}
 
-	void set_FEN(std::string FEN)
+	void set_FEN(std::string _FEN)
 	{
 		int i = 0, j = 0;
-		int figure;
+		int piece;
 		int delta;
 
 		clear_board();
 
-		for(int n = 0; n < FEN.length(); n++)
-		{
-			figure = 0;
+		FEN = _FEN;
 
-			switch(FEN[n]){
-				case 'K': figure =  K; break;
-				case 'k': figure = -K; break;
-				case 'Q': figure =  Q; break;
-				case 'q': figure = -Q; break;
-				case 'B': figure =  B; break;
-				case 'b': figure = -B; break;
-				case 'N': figure =  N; break;
-				case 'n': figure = -N; break;
-				case 'R': figure =  R; break;
-				case 'r': figure = -R; break;
-				case 'P': figure =  P; break;
-				case 'p': figure = -P; break;
+		for(int n = 0; n < _FEN.length(); n++)
+		{
+			piece = 0;
+
+			switch(_FEN[n]){
+				case 'K': piece =  K; break;
+				case 'k': piece = -K; break;
+				case 'Q': piece =  Q; break;
+				case 'q': piece = -Q; break;
+				case 'B': piece =  B; break;
+				case 'b': piece = -B; break;
+				case 'N': piece =  N; break;
+				case 'n': piece = -N; break;
+				case 'R': piece =  R; break;
+				case 'r': piece = -R; break;
+				case 'P': piece =  P; break;
+				case 'p': piece = -P; break;
 				case '/': i++; j = 0; break;
 				case '1':
 				case '2':
@@ -129,28 +155,28 @@ public:
 				case '6':
 				case '7':
 				case '8':
-					delta = FEN[n] - '0';
+					delta = _FEN[n] - '0';
 					j += delta;
 					break;
 			}
 
-			if(figure) 
+			if(piece) 
 			{
-				board[i][j] = figure;
+				board[i][j] = piece;
 				j++;
 			}
 		}
 	}
 
-	Vector2i get_xy_by_figure(int figure)
+	Vector2i get_xy_by_piece(int piece)
 	{
-		Vector2i figure_xy;
-		figure_xy.x = abs(figure) - 1;
+		Vector2i piece_xy;
+		piece_xy.x = abs(piece) - 1;
 
-		if(figure > 0) figure_xy.y = ROW_WHITE;
-		else figure_xy.y = ROW_BLACK;
+		if(piece > 0) piece_xy.y = ROW_WHITE;
+		else piece_xy.y = ROW_BLACK;
 
-		return figure_xy;
+		return piece_xy;
 	}
 
 	String get_chess_coords_by_xy(Vector2i xy)
@@ -176,17 +202,17 @@ public:
 	void draw_move()
 	{
 		Vector2i point = Mouse::getPosition(window);
-		Vector2i figure_xy;
-		figure_xy = get_xy_by_figure(figure_selected);
+		Vector2i piece_xy;
+		piece_xy = get_xy_by_piece(piece_selected);
 
-		s_figure.setTextureRect(IntRect(figure_xy.x * CELL_SIZE, figure_xy.y * CELL_SIZE, CELL_SIZE, CELL_SIZE));
-		s_figure.setPosition(point.x - CELL_SIZE/2, point.y - CELL_SIZE/2);
-		window.draw(s_figure);
+		s_piece.setTextureRect(IntRect(piece_xy.x * cell_size, piece_xy.y * cell_size, cell_size, cell_size));
+		s_piece.setPosition(point.x - cell_size/2, point.y - cell_size/2);
+		window.draw(s_piece);
 	}
 
-	void draw_figures()
+	void draw_pieces()
 	{
-		Vector2i figure_xy;
+		Vector2i piece_xy;
 
 		for(int i = 0; i < 8; ++i)
 		{
@@ -194,19 +220,19 @@ public:
 			{
 				if(board[i][j])
 				{
-					figure_xy = get_xy_by_figure(board[i][j]);
+					piece_xy = get_xy_by_piece(board[i][j]);
 
-					s_figure.setTextureRect(IntRect(figure_xy.x*CELL_SIZE, figure_xy.y*CELL_SIZE, CELL_SIZE, CELL_SIZE));
-					s_figure.setPosition(j*CELL_SIZE, i*CELL_SIZE);
-					window.draw(s_figure);
+					s_piece.setTextureRect(IntRect(piece_xy.x*cell_size, piece_xy.y*cell_size, cell_size, cell_size));
+					s_piece.setPosition(j*cell_size, i*cell_size);
+					window.draw(s_piece);
 				}
 			}
 		}
 	}
 
-	int get_figure_code(char figure)
+	int get_piece_code(char piece)
 	{
-		switch(figure)
+		switch(piece)
 		{
 			case 'p': return -P;
 			case 'P': return P;
@@ -223,9 +249,9 @@ public:
 		}
 	}
 
-	char get_figure_char(int figure)
+	char get_piece_char(int piece)
 	{
-		switch(figure)
+		switch(piece)
 		{
 			case P:		return 'P';
 			case R:		return 'R';
@@ -248,9 +274,9 @@ public:
 		std::stringstream s(PGN);
 		Vector2i from, to;
 
-		int figure = 0;
-		int figure_enemy = 0;
-		int figure_promo = 0;
+		int piece = 0;
+		int piece_enemy = 0;
+		int piece_promo = 0;
 		int find_x;
 		int find_y;
 		int find_z;
@@ -293,7 +319,7 @@ public:
 		}
 		else
 		{
-			figure = get_figure_code(last_move[0]);
+			piece = get_piece_code(last_move[0]);
 
 			sfrom = last_move.substr(1, 2);
 			sto = last_move.substr(3, 2);
@@ -306,12 +332,12 @@ public:
 
 			if(find_x!=-1)
 			{
-				figure_enemy = get_figure_code(last_move[find_x+1]);
+				piece_enemy = get_piece_code(last_move[find_x+1]);
 			}
 
 			if(find_y!=-1)
 			{
-				figure_promo = get_figure_code(last_move[find_y+1]);
+				piece_promo = get_piece_code(last_move[find_y+1]);
 			}
 
 			if(find_z!=-1)
@@ -327,8 +353,8 @@ public:
 				}
 			}
 
-			board[from.y][from.x] = figure;
-			board[to.y][to.x] = figure_enemy;
+			board[from.y][from.x] = piece;
+			board[to.y][to.x] = piece_enemy;
 		}
 
 		size_t len = UCI.getSize();
@@ -351,32 +377,32 @@ public:
 		{
 			from = get_xy_by_chess_coords(UCI.substring(len - 5, 2).toAnsiString());
 			to = get_xy_by_chess_coords(UCI.substring(len - 3, 2).toAnsiString());
-			figure_selected = board[to.y][to.x];
-			board[from.y][from.x] = figure_selected;
+			piece_selected = board[to.y][to.x];
+			board[from.y][from.x] = piece_selected;
 			board[to.y][to.x] = 0;
 
-			if(figure_selected == K && UCI.substring(len-5, 4).toAnsiString() == "e1g1")
+			if(piece_selected == K && UCI.substring(len-5, 4).toAnsiString() == "e1g1")
 			{
 				board[7][5] = 0;
 				board[7][7] = R;
 				flag_castle_00_white = 1;
 			}
 
-			if(figure_selected == K && UCI.substring(len-5, 4).toAnsiString() == "e1c1")
+			if(piece_selected == K && UCI.substring(len-5, 4).toAnsiString() == "e1c1")
 			{
 				board[7][3] = 0;
 				board[7][0] = R;
 				flag_castle_000_white = 1;
 			}
 
-			if(figure_selected == -K && UCI.substring(len-5, 4).toAnsiString() == "e8g8")
+			if(piece_selected == -K && UCI.substring(len-5, 4).toAnsiString() == "e8g8")
 			{
 				board[0][5] = 0;
 				board[0][7] = -R;
 				flag_castle_00_black = 1;
 			}
 
-			if(figure_selected == -K && UCI.substring(len-5, 4).toAnsiString() == "e8c8")
+			if(piece_selected == -K && UCI.substring(len-5, 4).toAnsiString() == "e8c8")
 			{
 				board[0][3] = 0;
 				board[0][0] = -R;
@@ -477,12 +503,12 @@ public:
 	{
 		int y_captured;
 
-		if(figure_selected == P && to.y == enpassant.y && to.x == enpassant.x && from.y == 3
-			|| figure_selected == -P && to.y == enpassant.y && to.x == enpassant.x && from.y == 4)
+		if(piece_selected == P && to.y == enpassant.y && to.x == enpassant.x && from.y == 3
+			|| piece_selected == -P && to.y == enpassant.y && to.x == enpassant.x && from.y == 4)
 		{
-			if(figure_selected == P)
+			if(piece_selected == P)
 				y_captured = enpassant.y + 1;
-			else if(figure_selected == -P)
+			else if(piece_selected == -P)
 				y_captured = enpassant.y - 1;
 
 			board[y_captured][enpassant.x] = 0;
@@ -506,7 +532,7 @@ public:
 		if(check_enpassant_capture(from, to))
 			return true;
 
-		if(figure_selected == P)
+		if(piece_selected == P)
 		{
 			if(from.y <= to.y 
 				|| abs(from.x - to.x) > 1
@@ -518,7 +544,7 @@ public:
 			else
 			{
 				if(to.y == 0)
-					figure_selected = Q;
+					piece_selected = Q;
 
 				if(from.x == to.x && from.y == 6 && to.y == 4 && board[5][to.x] == 0 && board[4][to.x] == 0)
 				{
@@ -533,7 +559,7 @@ public:
 			}
 		}
 
-		else if(figure_selected == -P)
+		else if(piece_selected == -P)
 		{
 			if(from.y >= to.y 
 				|| abs(from.x - to.x) > 1
@@ -545,7 +571,7 @@ public:
 			else
 			{
 				if(to.y == 7)
-					figure_selected = -Q;
+					piece_selected = -Q;
 
 				if(from.x == to.x && from.y == 1 && to.y == 3 && board[2][to.x] == 0 && board[3][to.x] == 0)
 				{
@@ -572,7 +598,7 @@ public:
 
 		if(abs(from.x - to.x) > 1)
 		{
-			if(figure_selected == K && flag_castle_00_white == 1
+			if(piece_selected == K && flag_castle_00_white == 1
 				&& from.y == 7 && from.x == 4 && to.y == 7 && to.x == 6
 				&& board[7][5] == 0 && board[7][6] == 0 && board[7][7] == R)
 			{
@@ -581,7 +607,7 @@ public:
 				flag_castle_00_white = 0;
 				rc = true;
 			}
-			else if(figure_selected == K && flag_castle_000_white == 1
+			else if(piece_selected == K && flag_castle_000_white == 1
 				&& from.y == 7 && from.x == 4 && to.y == 7 && to.x == 2
 				&& board[7][3] == 0 && board[7][2] == 0 && board[7][1] == 0 && board[7][0] == R)
 			{
@@ -590,7 +616,7 @@ public:
 				flag_castle_000_white = 0;
 				rc = true;
 			}
-			else if(figure_selected == -K && flag_castle_00_black == 1
+			else if(piece_selected == -K && flag_castle_00_black == 1
 				&& from.y == 0 && from.x == 4 && to.y == 0 && to.x == 6
 				&& board[0][5] == 0 && board[0][6] == 0 && board[0][7] == -R)
 			{
@@ -599,7 +625,7 @@ public:
 				flag_castle_00_black = 0;
 				rc = true;
 			}
-			else if(figure_selected == -K && flag_castle_000_black == 1
+			else if(piece_selected == -K && flag_castle_000_black == 1
 				&& from.y == 0 && from.x == 4 && to.y == 0 && to.x == 2
 				&& board[0][3] == 0 && board[0][2] == 0 && board[0][1] == 0 && board[0][0] == -R)
 			{
@@ -616,12 +642,12 @@ public:
 			rc = is_line_empty(from, to);
 			if(rc)
 			{
-				if(figure_selected == K)
+				if(piece_selected == K)
 				{
 					flag_castle_00_white = 0;
 					flag_castle_000_white = 0;
 				}
-				if(figure_selected == -K)
+				if(piece_selected == -K)
 				{
 					flag_castle_00_black = 0;
 					flag_castle_000_black = 0;
@@ -693,13 +719,13 @@ public:
 	{
 		bool rc = true;
 
-		if(figure_selected * flag_turn < 0
+		if(piece_selected * flag_turn < 0
 			|| from == to
-			|| figure_selected * board[to.y][to.x] > 0)
+			|| piece_selected * board[to.y][to.x] > 0)
 			rc = false;
 		else
 		{
-			switch(figure_selected)
+			switch(piece_selected)
 			{
 				case P:
 				case -P:
@@ -737,7 +763,7 @@ public:
 
 	void make_engine_move()
 	{
-		int figure, figure_enemy;
+		int piece, piece_enemy;
 		Vector2i from, to;
 		std::string engine_move;
 
@@ -745,12 +771,12 @@ public:
 
 		from = get_xy_by_chess_coords(engine_move.substr(0, 2));
 		to = get_xy_by_chess_coords(engine_move.substr(2, 2));
-		figure = board[from.y][from.x];
-		figure_enemy = board[to.y][to.x];
+		piece = board[from.y][from.x];
+		piece_enemy = board[to.y][to.x];
 		board[to.y][to.x] = board[from.y][from.x];
 		board[from.y][from.x] = 0;
 
-		log_game(figure, from, to, figure_enemy);
+		log_game(piece, from, to, piece_enemy);
 		flag_turn = -flag_turn;
 		counter_halfmove++;
 	}
@@ -820,7 +846,7 @@ public:
 		if(proc_info.hThread != NULL) CloseHandle(proc_info.hThread);
 	}
 
-	void log_game(int figure, Vector2i from, Vector2i to, int figure_enemy)
+	void log_game(int piece, Vector2i from, Vector2i to, int piece_enemy)
 	{
 		String fromS, toS;
 		std::string sfrom, sto;
@@ -834,27 +860,27 @@ public:
 		UCI += toS;
 		UCI += " ";
 
-		PGN += get_figure_char(figure) + sfrom + sto;
+		PGN += get_piece_char(piece) + sfrom + sto;
 
-		if(figure * figure_enemy < 0)
+		if(piece * piece_enemy < 0)
 		{
 			PGN += "x";
-			PGN += get_figure_char(figure_enemy);
+			PGN += get_piece_char(piece_enemy);
 		}
 
-		if(figure == P && sto[1] == '8')
+		if(piece == P && sto[1] == '8')
 			PGN += "=Q";
-		else if(figure == -P && sto[1] == '1')
+		else if(piece == -P && sto[1] == '1')
 			PGN += "=q";
-		else if(figure == R && sfrom == "a1")
+		else if(piece == R && sfrom == "a1")
 			PGN += "~q";
-		else if(figure == R && sfrom == "h1")
+		else if(piece == R && sfrom == "h1")
 			PGN += "~k";
-		else if(figure == -R && sfrom == "a8")
+		else if(piece == -R && sfrom == "a8")
 			PGN += "~q";
-		else if(figure == -R && sfrom == "h8")
+		else if(piece == -R && sfrom == "h8")
 			PGN += "~k";
-		else if(figure == K || figure == -K)
+		else if(piece == K || piece == -K)
 			PGN += "~~";
 
 		PGN += " ";
@@ -865,8 +891,8 @@ public:
 		Vector2i mouse_xy, from, to;
 		bool selected = false;
 		bool engine_turn = false;
-		int figure;
-		int figure_enemy;
+		int piece;
+		int piece_enemy;
 
 		Event event;
 
@@ -902,7 +928,11 @@ public:
 						std::cout << PGN << std::endl;
 
 					if(event.key.code == Keyboard::E)
-						play_with_engine ^= play_with_engine;
+					{
+						play_with_engine = !play_with_engine;
+						if(play_with_engine)
+							engine_turn = true;
+					}
 				}
 
 				if(event.type == Event::MouseButtonPressed)
@@ -911,9 +941,9 @@ public:
 					{
 						selected = true;
 						from = Mouse::getPosition(window);
-						from.x /= CELL_SIZE;
-						from.y /= CELL_SIZE;
-						figure_selected = board[from.y][from.x];
+						from.x /= cell_size;
+						from.y /= cell_size;
+						piece_selected = board[from.y][from.x];
 						board[from.y][from.x] = 0;
 					}
 				}
@@ -924,21 +954,21 @@ public:
 					{
 						selected = false;
 						to = Mouse::getPosition(window);
-						to.x /= CELL_SIZE;
-						to.y /= CELL_SIZE;
+						to.x /= cell_size;
+						to.y /= cell_size;
 
-						figure = figure_selected;
+						piece = piece_selected;
 						if(check_move(from, to))
 						{
-							figure_enemy = board[to.y][to.x];
-							board[to.y][to.x] = figure_selected;
-							if (figure_selected != P && figure_selected != -P)
+							piece_enemy = board[to.y][to.x];
+							board[to.y][to.x] = piece_selected;
+							if (piece_selected != P && piece_selected != -P)
 							{
 								enpassant.y = 0;
 								enpassant.x = 0;
 							}
 
-							log_game(figure, from, to, figure_enemy);
+							log_game(piece, from, to, piece_enemy);
 							flag_turn = -flag_turn;
 							counter_halfmove++;
 
@@ -946,14 +976,14 @@ public:
 								engine_turn = true;
 						}
 						else 
-							board[from.y][from.x] = figure_selected;
+							board[from.y][from.x] = piece_selected;
 					}
 				}
 			}
 
 			window.clear();
 			window.draw(s_board);
-			draw_figures();
+			draw_pieces();
 
 			if(selected)
 			{
@@ -969,9 +999,10 @@ int main(int argc, char const *argv[])
 {
 	Chess c;
 
-	// c.set_FEN("4Q3/2b4r/7B/6R1/5k/8/7K/5q2");
 	c.set_FEN("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR");
+	// c.set_FEN("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
 	// c.set_FEN("6k1/4Rpb1/6pp/1Np5/8/7P/2P2nPK/3r4 w - - 0 31");
+	// c.set_FEN("4Q3/2b4r/7B/6R1/5k/8/7K/5q2");
 
 	c.run();
 
