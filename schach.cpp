@@ -70,7 +70,7 @@ class Chess
 	int counter_halfmove;
 	int piece_selected;
 	int flag_turn;
-	int flag_castle_00_white, flag_castle_000_white, flag_castle_00_black, flag_castle_000_black;
+	int castle_K, castle_Q, castle_k, castle_q;
 	Vector2i enpassant;
 
 	bool play_with_engine;
@@ -101,10 +101,10 @@ public:
 
 		counter_halfmove = 0;
 		flag_turn = 1;
-		flag_castle_00_white = 1;
-		flag_castle_000_white = 1;
-		flag_castle_00_black = 1;
-		flag_castle_000_black = 1;
+		castle_K = 1;
+		castle_Q = 1;
+		castle_k = 1;
+		castle_q = 1;
 
 		proc_info = {0};
 		connect_engine(PATH_ENGINE);
@@ -291,7 +291,7 @@ public:
 			board[7][5] = 0;
 			board[7][6] = 0;
 			board[7][7] = R;
-			flag_castle_00_white = 1;
+			castle_K = 1;
 		}
 		else if(last_move == "Ke1c1~~")
 		{
@@ -299,7 +299,7 @@ public:
 			board[7][2] = 0;
 			board[7][3] = 0;
 			board[7][0] = R;
-			flag_castle_000_white = 1;
+			castle_Q = 1;
 		}
 		else if(last_move == "ke8g8~~")
 		{
@@ -307,7 +307,7 @@ public:
 			board[0][5] = 0;
 			board[0][6] = 0;
 			board[0][7] = -R;
-			flag_castle_00_black = 1;
+			castle_k = 1;
 		}
 		else if(last_move == "ke8c8~~")
 		{
@@ -315,7 +315,7 @@ public:
 			board[0][2] = 0;
 			board[0][3] = 0;
 			board[0][0] = -R;
-			flag_castle_000_black = 1;
+			castle_q = 1;
 		}
 		else
 		{
@@ -343,13 +343,13 @@ public:
 			if(find_z!=-1)
 			{
 				if(last_move[find_z+1] == 'q')
-					flag_castle_000_white = 1;
+					castle_Q = 1;
 				else if(last_move[find_z+1] == 'k')
-					flag_castle_00_white = 1;
+					castle_K = 1;
 				else
 				{
-					flag_castle_00_white = 1;
-					flag_castle_000_white = 1;
+					castle_K = 1;
+					castle_Q = 1;
 				}
 			}
 
@@ -385,28 +385,28 @@ public:
 			{
 				board[7][5] = 0;
 				board[7][7] = R;
-				flag_castle_00_white = 1;
+				castle_K = 1;
 			}
 
 			if(piece_selected == K && UCI.substring(len-5, 4).toAnsiString() == "e1c1")
 			{
 				board[7][3] = 0;
 				board[7][0] = R;
-				flag_castle_000_white = 1;
+				castle_Q = 1;
 			}
 
 			if(piece_selected == -K && UCI.substring(len-5, 4).toAnsiString() == "e8g8")
 			{
 				board[0][5] = 0;
 				board[0][7] = -R;
-				flag_castle_00_black = 1;
+				castle_k = 1;
 			}
 
 			if(piece_selected == -K && UCI.substring(len-5, 4).toAnsiString() == "e8c8")
 			{
 				board[0][3] = 0;
 				board[0][0] = -R;
-				flag_castle_000_black = 1;
+				castle_q = 1;
 			}
 
 			UCI.erase(len - 5, 5);
@@ -598,40 +598,40 @@ public:
 
 		if(abs(from.x - to.x) > 1)
 		{
-			if(piece_selected == K && flag_castle_00_white == 1
+			if(piece_selected == K && castle_K == 1
 				&& from.y == 7 && from.x == 4 && to.y == 7 && to.x == 6
 				&& board[7][5] == 0 && board[7][6] == 0 && board[7][7] == R)
 			{
 				board[7][7] = 0;
 				board[7][5] = R;
-				flag_castle_00_white = 0;
+				castle_K = 0;
 				rc = true;
 			}
-			else if(piece_selected == K && flag_castle_000_white == 1
+			else if(piece_selected == K && castle_Q == 1
 				&& from.y == 7 && from.x == 4 && to.y == 7 && to.x == 2
 				&& board[7][3] == 0 && board[7][2] == 0 && board[7][1] == 0 && board[7][0] == R)
 			{
 				board[7][0] = 0;
 				board[7][3] = R;
-				flag_castle_000_white = 0;
+				castle_Q = 0;
 				rc = true;
 			}
-			else if(piece_selected == -K && flag_castle_00_black == 1
+			else if(piece_selected == -K && castle_k == 1
 				&& from.y == 0 && from.x == 4 && to.y == 0 && to.x == 6
 				&& board[0][5] == 0 && board[0][6] == 0 && board[0][7] == -R)
 			{
 				board[0][7] = 0;
 				board[0][5] = -R;
-				flag_castle_00_black = 0;
+				castle_k = 0;
 				rc = true;
 			}
-			else if(piece_selected == -K && flag_castle_000_black == 1
+			else if(piece_selected == -K && castle_q == 1
 				&& from.y == 0 && from.x == 4 && to.y == 0 && to.x == 2
 				&& board[0][3] == 0 && board[0][2] == 0 && board[0][1] == 0 && board[0][0] == -R)
 			{
 				board[0][0] = 0;
 				board[0][3] = -R;
-				flag_castle_000_black = 0;
+				castle_q = 0;
 				rc = true;
 			}
 			else
@@ -644,13 +644,13 @@ public:
 			{
 				if(piece_selected == K)
 				{
-					flag_castle_00_white = 0;
-					flag_castle_000_white = 0;
+					castle_K = 0;
+					castle_Q = 0;
 				}
 				if(piece_selected == -K)
 				{
-					flag_castle_00_black = 0;
-					flag_castle_000_black = 0;
+					castle_k = 0;
+					castle_q = 0;
 				}
 			}
 		}
@@ -676,14 +676,14 @@ public:
 			rc = is_line_empty(from, to);
 			if(rc)
 			{
-				if(from.y == 7 && from.x == 0 && flag_castle_000_white == 1)
-					flag_castle_000_white = 0;
-				if(from.y == 7 && from.x == 7 && flag_castle_00_white == 1)
-					flag_castle_00_white = 0;
-				if(from.y == 0 && from.x == 0 && flag_castle_000_black == 1)
-					flag_castle_000_black = 0;
-				if(from.y == 0 && from.x == 7 && flag_castle_00_black == 1)
-					flag_castle_00_black = 0;
+				if(from.y == 7 && from.x == 0 && castle_Q == 1)
+					castle_Q = 0;
+				if(from.y == 7 && from.x == 7 && castle_K == 1)
+					castle_K = 0;
+				if(from.y == 0 && from.x == 0 && castle_q == 1)
+					castle_q = 0;
+				if(from.y == 0 && from.x == 7 && castle_k == 1)
+					castle_k = 0;
 			}
 		}
 
