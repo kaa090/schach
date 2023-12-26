@@ -727,7 +727,7 @@ public:
 	bool check_king_checked(Vector2i square_king)
 	{
 		bool rc = false;
-
+		return rc;
 		rc |= is_square_checked_horizontally(square_king); 
 		rc |= is_square_checked_vertically(square_king); 
 		rc |= is_square_checked_diagonally(square_king); 
@@ -993,6 +993,8 @@ public:
 		Vector2i from, to;
 		std::string engine_move;
 
+		std::cout << UCI.toAnsiString() << std::endl;
+
 		engine_move = get_next_move(UCI.toAnsiString());
 
 		from = get_xy_by_chess_coords(engine_move.substr(0, 2));
@@ -1161,8 +1163,11 @@ public:
 
 				if(event.type == Event::KeyPressed)
 				{
-					if(event.key.code == Keyboard::Escape) 
+					if(event.key.code == Keyboard::Escape)
+					{
+						close_connection();
 						window.close();
+					}						
 
 					if(event.key.code == Keyboard::BackSpace)
 						undo_move();
