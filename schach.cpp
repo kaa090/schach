@@ -18,9 +18,10 @@
 using namespace sf;
 
 const int BLACKSIDE = 0;
-const int ENGINE_DEPTH = 2; // [1, 20] белыми обыгрываю [1, 2]
+const int ENGINE_DEPTH = 4; // [1, 20] белыми обыгрываю [1, 5]
 const bool PLAY_WITH_ENGINE = 1;
 const int CHESS_SIZE = 0; // 0 - small, 1 - big
+
 
 //CHESS_SIZE = 0:
 const int SQUARE_SIZE_0 = 50;
@@ -741,6 +742,7 @@ public:
 	{
 		bool rc = true;
 
+		std::cout << "check_move_king()" << std::endl;
 		if(abs(from.x - to.x) > 1)
 		{
 			if(piece_selected == K && castle_K == 1
@@ -993,8 +995,6 @@ public:
 		Vector2i from, to;
 		std::string engine_move;
 
-		std::cout << UCI.toAnsiString() << std::endl;
-
 		engine_move = get_next_move(UCI.toAnsiString());
 
 		from = get_xy_by_chess_coords(engine_move.substr(0, 2));
@@ -1002,6 +1002,11 @@ public:
 
 		piece_selected = board[from.y][from.x];
 		piece_enemy = board[to.y][to.x];
+
+
+		String sFrom = get_chess_coords_by_xy(from);
+		String sTo = get_chess_coords_by_xy(to);
+		std::cout << get_piece_char(piece_selected) << ": " << sFrom.toAnsiString() << sTo.toAnsiString() << std::endl;
 
 		check_move(from, to);
 
