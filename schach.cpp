@@ -18,7 +18,7 @@
 using namespace sf;
 
 const int BLACKSIDE = 0;
-const int ENGINE_DEPTH = 4; // [1, 20] белыми обыгрываю [1, 5]
+const int ENGINE_DEPTH = 1; // [1, 20] белыми обыгрываю [1, 5]
 const bool PLAY_WITH_ENGINE = 1;
 const int CHESS_SIZE = 0; // 0 - small, 1 - big
 
@@ -224,7 +224,7 @@ public:
 				{
 					piece_xy = get_xy_by_piece(board[i][j]);
 
-					if(game_over && (board[i][j] == K or board[i][j] == -K))
+					if(game_over && board[i][j] * flag_turn == K)
 						s_piece.setTextureRect(IntRect(6*square_size, piece_xy.y*square_size, square_size, square_size));
 					else
 						s_piece.setTextureRect(IntRect(piece_xy.x*square_size, piece_xy.y*square_size, square_size, square_size));
@@ -742,7 +742,6 @@ public:
 	{
 		bool rc = true;
 
-		std::cout << "check_move_king()" << std::endl;
 		if(abs(from.x - to.x) > 1)
 		{
 			if(piece_selected == K && castle_K == 1
@@ -989,13 +988,31 @@ public:
 		return rc;
 	}
 
+	bool check_mate()
+	{
+		std::string engine_move;
+
+		engine_move = get_engine_move(UCI.toAnsiString());
+		if(engine_move == "(none")
+		{
+			game_over = true;
+		}
+
+		return game_over;
+	}
+
 	void make_engine_move()
 	{
 		int piece_enemy;
 		Vector2i from, to;
 		std::string engine_move;
 
-		engine_move = get_next_move(UCI.toAnsiString());
+		engine_move = get_engine_move(UCI.toAnsiString());
+		if(engine_move == "(none")
+		{
+			game_over = true;
+			return;
+		}
 
 		from = get_xy_by_chess_coords(engine_move.substr(0, 2));
 		to = get_xy_by_chess_coords(engine_move.substr(2, 2));
@@ -1006,8 +1023,7 @@ public:
 
 		String sFrom = get_chess_coords_by_xy(from);
 		String sTo = get_chess_coords_by_xy(to);
-		std::cout << get_piece_char(piece_selected) << ": " << sFrom.toAnsiString() << sTo.toAnsiString() << std::endl;
-
+		
 		check_move(from, to);
 
 		board[to.y][to.x] = piece_selected;
@@ -1043,7 +1059,7 @@ public:
 		CreateProcessW(NULL, ptr, NULL, NULL, TRUE, 0, NULL, NULL, &su_info, &proc_info);
 	}
 
-	std::string get_next_move(std::string position)
+	std::string get_engine_move(std::string position)
 	{
 		BYTE buffer[2048];
 		DWORD bytes, bytes_available;
@@ -1141,6 +1157,7 @@ public:
 		bool engine_turn;
 		int piece;
 		int piece_enemy;
+		std::string engine_move;
 
 		if(BLACKSIDE)
 			engine_turn = true;
@@ -1155,6 +1172,7 @@ public:
 			{
 				make_engine_move();
 				engine_turn = false;
+				check_mate();				
 			}
 
 			while(window.pollEvent(event))
@@ -1207,6 +1225,11 @@ public:
 							engine_turn = true;
 					}
 
+					if(event.key.code == Keyboard::G)
+					{
+						engine_move = get_engine_move(UCI.toAnsiString());
+						std::cout << engine_move << std::endl;
+					}
 					// if(event.key.code == Keyboard::C)
 					// {
 					// 	Vector2i square;
@@ -1336,8 +1359,9 @@ int main(int argc, char const *argv[])
 
 	// c.set_FEN("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
 	// c.set_FEN("6k1/4Rpb1/6pp/1Np5/8/7P/2P2nPK/3r4 w - - 0 31");
+	// c.set_FEN("k7/RR6/8/8/8/8/K/8 b - - 0 32");
 	// c.set_FEN("4Q3/2b4r/7B/6R1/5k/8/7K/5q2");
-	// c.set_FEN("7k/P7/8/8/8/8/8/K7");
+	// c.set_FEN("7k/P7/8/8/8/8/8/K7");	
 
 	c.run();
 
