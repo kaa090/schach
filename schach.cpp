@@ -18,7 +18,7 @@
 using namespace sf;
 
 const int BLACKSIDE = 0;
-const int ENGINE_DEPTH = 1; // [1, 20] белыми обыгрываю [1, 5]
+const int ENGINE_DEPTH = 8; // [1, 20] белыми обыгрываю [1, 7]
 const bool PLAY_WITH_ENGINE = 1;
 const int CHESS_SIZE = 0; // 0 - small, 1 - big
 
@@ -31,7 +31,7 @@ const char* PATH_PIECES_0 = "rsc/small_pieces2.png";
 //CHESS_SIZE = 1:
 const int SQUARE_SIZE_1 = 100;
 const char* PATH_BOARD_1 = "rsc/big_board.png";
-const char* PATH_PIECES_1 = "rsc/big_pieces.png";
+const char* PATH_PIECES_1 = "rsc/big_pieces2.png";
 
 const char* PATH_ENGINE = "D:\\prog\\cpp\\schach\\stockfish\\stockfish.exe";
 
@@ -395,6 +395,9 @@ public:
 
 		PGN.erase(PGN.find(last_move), last_move.length() + 1);
 
+		if(game_over)
+			game_over = false;
+
 		flag_turn = -flag_turn;
 		counter_halfmove--;
 	}
@@ -595,13 +598,13 @@ public:
 
 		std::cout << "King(x,y)=" << square.x << square.y << std::endl;
 		y = square.y - flag_turn;
-		
+
 		x = square.x - 1;
 		std::cout << "Pawn1(x,y)=" << x << y << std::endl;
 		if (x >= 0 && y >= 0 && y <= 7)
 			if (board[y][x] == -flag_turn * P)
 				return true;
-		
+
 		x = square.x + 1;
 		std::cout << "Pawn2(x,y)=" << x << y << std::endl;
 		if (x <= 7 && y >= 0 && y <= 7)
@@ -721,7 +724,7 @@ public:
 
 	bool check_king_checked2(int _board[8][8])
 	{
-		
+
 		return false;
 	}
 
@@ -1023,7 +1026,7 @@ public:
 
 		String sFrom = get_chess_coords_by_xy(from);
 		String sTo = get_chess_coords_by_xy(to);
-		
+
 		check_move(from, to);
 
 		board[to.y][to.x] = piece_selected;
@@ -1172,7 +1175,7 @@ public:
 			{
 				make_engine_move();
 				engine_turn = false;
-				check_mate();				
+				// check_mate();
 			}
 
 			while(window.pollEvent(event))
@@ -1190,7 +1193,7 @@ public:
 					{
 						close_connection();
 						window.close();
-					}						
+					}
 
 					if(event.key.code == Keyboard::BackSpace)
 						undo_move();
@@ -1277,8 +1280,8 @@ public:
 				{
 					if(event.key.code == (Keyboard::Key)Mouse::Left)
 					{
-						selected = true;
 						from = Mouse::getPosition(window);
+						
 						from.x /= square_size;
 						from.y /= square_size;
 
@@ -1289,11 +1292,16 @@ public:
 						}
 
 						piece_selected = board[from.y][from.x];
-						board[from.y][from.x] = 0;
+
+						if(piece_selected)
+						{
+							board[from.y][from.x] = 0;
+							selected = true;							
+						}						
 					}
 				}
 
-				if(event.type == Event::MouseButtonReleased)
+				if(event.type == Event::MouseButtonReleased && selected == true)
 				{
 					if(event.key.code == (Keyboard::Key)Mouse::Left)
 					{
@@ -1361,7 +1369,7 @@ int main(int argc, char const *argv[])
 	// c.set_FEN("6k1/4Rpb1/6pp/1Np5/8/7P/2P2nPK/3r4 w - - 0 31");
 	// c.set_FEN("k7/RR6/8/8/8/8/K/8 b - - 0 32");
 	// c.set_FEN("4Q3/2b4r/7B/6R1/5k/8/7K/5q2");
-	// c.set_FEN("7k/P7/8/8/8/8/8/K7");	
+	// c.set_FEN("7k/P7/8/8/8/8/8/K7");
 
 	c.run();
 
