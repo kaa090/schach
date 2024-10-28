@@ -16,11 +16,12 @@
 // Space - сделать ход движком
 // F - напечатать FEN
 // U - напечатать UCI
-// P - напечатать myPGN
+// P - напечатать PGN
+// M - напечатать myPGN
 // G - напечатать рекомендуемый движком ход
 // B - напечатать в текстовом виде ситуацию на доске 
 // E - включить/выключить движок
-// M - режим редактирования позиции
+// C - режим редактирования позиции
 
 #include <iostream>
 #include <SFML/Graphics.hpp>
@@ -32,20 +33,40 @@
 
 using namespace sf;
 
+// startpos:
+// #define defFEN "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
+
+//Reti
+// #define defFEN "7K/8/k1P5/7p/8/8/8/8 w - - 0 1"
+
+//Filidor
+// #define defFEN "4k3/8/8/4P3/3K4/8/R7/7r b - - 0 1"
+
+// задания:
+#define defFEN "3r3r/p1p1kppp/2Qb1n2/8/3qPPb1/2N5/PPP3PP/R1B2R1K b - - 1 15"
+// #define defFEN "2rq1rk1/p3bppp/1p1p1n2/3Qp3/P3P3/1P3N2/2P1RPPP/R1B3K1 w - - 0 1"
+
 const int BLACKSIDE = 0;
-const int ENGINE_DEPTH = 15; // [1, 20] белыми обыгрываю [1, 7]
-const bool PLAY_WITH_ENGINE = 1;
-const int CHESS_SIZE = 0; // 0 - small, 1 - big
+const int ENGINE_DEPTH = 11; // [1, 20] белыми обыгрываю [1, 7]
+const bool PLAY_WITH_ENGINE = 0;
+const int WAITTIME = 500;
+const int CHESS_SIZE = 0; // 0 - small, 1 - big, 7 - stealth
 
 //CHESS_SIZE = 0:
 const int SQUARE_SIZE_0 = 50;
 const char* PATH_BOARD_0 = "rsc/small_board.png";
-const char* PATH_PIECES_0 = "rsc/small_pieces2.png";
+const char* PATH_PIECES_0 = "rsc/small_pieces.png";
 
 //CHESS_SIZE = 1:
 const int SQUARE_SIZE_1 = 100;
 const char* PATH_BOARD_1 = "rsc/big_board.png";
-const char* PATH_PIECES_1 = "rsc/big_pieces2.png";
+const char* PATH_PIECES_1 = "rsc/big_pieces.png";
+
+//CHESS_SIZE = 7:
+const int SQUARE_SIZE_7 = 50;
+// const char* PATH_BOARD_7 = "rsc/small_board_stealth0.png";
+const char* PATH_BOARD_7 = "rsc/small_board_stealth1.png";
+const char* PATH_PIECES_7 = "rsc/small_pieces_stealth.png";
 
 const char* PATH_ENGINE = "D:\\prog\\cpp\\schach\\stockfish\\stockfish.exe";
 
@@ -78,15 +99,16 @@ class Chess
 		{ R, N, B, Q, K, B, N, R }
 	};
 
-	String UCI;
+	std::string UCI;
 	std::string FEN;
+	std::string PGN;
 	std::string myPGN;
 
 	int counter_move = 1;
 	int counter_move50 = 0;
 	int counter_halfmove = 0;
 	int piece_selected = 0;
-	int move_side = 1;
+	int move_side = MOVE_SIDE_WHITE;
 	int castle_K, castle_Q, castle_k, castle_q;
 	Vector2i enpassant;
 	bool game_over = 0;
@@ -112,6 +134,12 @@ public:
 			t_board.loadFromFile(PATH_BOARD_1);
 			t_pieces.loadFromFile(PATH_PIECES_1);
 		}
+		else if (CHESS_SIZE == 7)
+		{
+			square_size = SQUARE_SIZE_7;
+			t_board.loadFromFile(PATH_BOARD_7);
+			t_pieces.loadFromFile(PATH_PIECES_7);
+		}
 
 		s_board.setTexture(t_board);
 		s_piece.setTexture(t_pieces);
@@ -132,6 +160,16 @@ public:
 		connect_engine(PATH_ENGINE);
 
 		play_with_engine = PLAY_WITH_ENGINE;
+
+		set_title();
+	}
+
+	~Chess()
+	{
+		close_connection();
+		FEN = get_FEN();
+		std::cout << "PGN:" << std::endl << PGN << std::endl;
+		std::cout << "FEN:" << std::endl << FEN << std::endl;
 	}
 
 	void clear_board()
@@ -213,7 +251,7 @@ public:
 
 		_FEN = _FEN + " ";
 		if (enpassant.x != 0 || enpassant.y != 0)
-			_FEN = _FEN + get_chess_coords_by_xy(enpassant).toAnsiString();
+			_FEN = _FEN + get_chess_coords_by_xy(enpassant);
 		else
 			_FEN = _FEN + "-";
 
@@ -337,6 +375,8 @@ public:
 				j++;
 			}
 		}
+
+		set_title();
 	}
 
 	Vector2i get_xy_by_piece(int piece)
@@ -352,9 +392,9 @@ public:
 		return piece_xy;
 	}
 
-	String get_chess_coords_by_xy(Vector2i xy)
+	std::string get_chess_coords_by_xy(Vector2i xy)
 	{
-		String coords;
+		std::string coords;
 
 		coords += char(xy.x + 97);
 		coords += char(56 - xy.y);
@@ -362,7 +402,7 @@ public:
 		return coords;
 	}
 
-	Vector2i get_xy_by_chess_coords(String coords)
+	Vector2i get_xy_by_chess_coords(std::string coords)
 	{
 		Vector2i xy;
 
@@ -460,15 +500,32 @@ public:
 	void undo_move()
 	{
 		std::string last_move, sfrom, sto, castle_side;
-		std::stringstream s(myPGN);
+		std::stringstream ss;
 		Vector2i from, to;
 
 		int piece = 0;
 		int piece_enemy = 0;
 		int piece_promo = 0;
 		int find_capture, find_promo, find_castle, find_enpassant;
+		ss.str(PGN);
+		while (ss >> last_move){}
+		last_move = " " + last_move;
+		PGN.erase(PGN.find(last_move), last_move.length());
+// std::cout<<"da bin ich"<<std::endl;
 
-		while (s >> last_move){}
+		if (move_side == MOVE_SIDE_BLACK)
+		{
+			ss.clear();
+			ss.str(PGN);
+			while (ss >> last_move){}
+			last_move = " " + last_move;
+			PGN.erase(PGN.find(last_move), last_move.length());
+		}
+
+		ss.clear();
+		ss.str(myPGN);
+		while (ss >> last_move){}
+		myPGN.erase(myPGN.find(last_move), last_move.length() + 1);
 
 		if (last_move == "") return;
 
@@ -556,7 +613,7 @@ public:
 			board[to.y][to.x] = piece_enemy;
 		}
 
-		size_t len = UCI.getSize();
+		size_t len = UCI.length();
 		if ( len >= 5)
 		{
 			if (piece_promo != 0)
@@ -565,8 +622,6 @@ public:
 				UCI.erase(len - 5, 5);
 		}
 
-		myPGN.erase(myPGN.find(last_move), last_move.length() + 1);
-
 		if (game_over)
 			game_over = false;
 
@@ -574,7 +629,11 @@ public:
 		counter_halfmove--;
 
 		if (counter_halfmove % 2 == 1)
-			counter_move--;
+		{
+			counter_move--;			
+		}
+
+		set_title();
 	}
 
 	void print_board()
@@ -696,6 +755,204 @@ public:
 		}
 
 		return rc;
+	}
+
+	Vector2i is_square_checked_by_my_rook(Vector2i to, bool own_rook = false)
+	{
+		Vector2i square_rook;
+		square_rook.x = -1;
+		square_rook.y = -1;
+
+		int x, y;
+		int rook;
+
+		if(own_rook)
+			rook = move_side * R;
+		else
+			rook = -move_side * R;
+
+		for (int i = to.x - 1; i >= 0; i--)
+		{
+			if (board[to.y][i] == 0)
+				continue;
+
+			if (board[to.y][i] == rook)
+			{
+				square_rook.x = i;
+				square_rook.y = to.y;
+				return square_rook;
+			}
+
+			break;
+		}
+
+		for (int i = to.x + 1; i <= 7; i++)
+		{
+			if (board[to.y][i] == 0)
+				continue;
+
+			if (board[to.y][i] == rook)
+			{
+				square_rook.x = i;
+				square_rook.y = to.y;
+				return square_rook;
+			}
+
+			break;
+		}
+
+		for (int i = to.y - 1; i >= 0; i--)
+		{
+			if (board[i][to.x] == 0)
+				continue;
+
+			if (board[i][to.x] == rook)
+			{
+				square_rook.x = to.x;
+				square_rook.y = i;
+				return square_rook;
+			}
+
+			break;
+		}
+
+		for (int i = to.y + 1; i <= 7; i++)
+		{
+			if (board[i][to.x] == 0)
+				continue;
+
+			if (board[i][to.x] == rook)
+			{
+				square_rook.x = to.x;
+				square_rook.y = i;
+				return square_rook;
+			}
+
+			break;
+		}
+
+		return square_rook;
+	}
+
+	Vector2i is_square_checked_by_my_knight(Vector2i to, bool own_knight = false)
+	{
+		Vector2i square_knight;
+		square_knight.x = -1;
+		square_knight.y = -1;
+
+		int x, y;
+		int knight;
+
+		if(own_knight)
+			knight = move_side * N;
+		else
+			knight = -move_side * N;
+
+		y = to.y - 2;
+		if (y >= 0)
+		{
+			x = to.x - 1;
+			if (x >= 0)
+			{
+				if (board[y][x] == knight)
+				{
+					square_knight.x = x;
+					square_knight.y = y;
+					return square_knight;
+				}
+			}
+
+			x = to.x + 1;
+			if (x <= 7)
+			{
+				if (board[y][x] == knight)
+				{
+					square_knight.x = x;
+					square_knight.y = y;
+					return square_knight;
+				}
+			}
+		}
+
+		y = to.y - 1;
+		if (y >= 0)
+		{
+			x = to.x - 2;
+			if (x >= 0)
+			{
+				if (board[y][x] == knight)
+				{
+					square_knight.x = x;
+					square_knight.y = y;
+					return square_knight;
+				}
+			}
+
+			x = to.x + 2;
+			if (x <= 7)
+			{
+				if (board[y][x] == knight)
+				{
+					square_knight.x = x;
+					square_knight.y = y;
+					return square_knight;
+				}
+			}
+		}
+
+		y = to.y + 1;
+		if (y <= 7)
+		{
+			x = to.x - 2;
+			if (x >= 0)
+			{
+				if (board[y][x] == knight)
+				{
+					square_knight.x = x;
+					square_knight.y = y;
+					return square_knight;
+				}
+			}
+
+			x = to.x + 2;
+			if (x <= 7)
+			{
+				if (board[y][x] == knight)
+				{
+					square_knight.x = x;
+					square_knight.y = y;
+					return square_knight;
+				}
+			}
+		}
+
+		y = to.y + 2;
+		if (y <= 7)
+		{
+			x = to.x - 1;
+			if (x >= 0)
+			{
+				if (board[y][x] == knight)
+				{
+					square_knight.x = x;
+					square_knight.y = y;
+					return square_knight;
+				}
+			}
+
+			x = to.x + 1;
+			if (x <= 7)
+			{
+				if (board[y][x] == knight)
+				{
+					square_knight.x = x;
+					square_knight.y = y;
+					return square_knight;
+				}
+			}
+		}
+
+		return square_knight;
 	}
 
 	bool is_square_checked_by_knight(Vector2i square)
@@ -1196,9 +1453,6 @@ public:
 		piece_selected = board[from.y][from.x];
 		piece_enemy = board[to.y][to.x];
 
-		String sFrom = get_chess_coords_by_xy(from);
-		String sTo = get_chess_coords_by_xy(to);
-
 		piece_selected_old = piece_selected;
 		check_move(from, to);
 
@@ -1210,8 +1464,10 @@ public:
 		counter_halfmove++;
 
 		if (move_side == MOVE_SIDE_BLACK)
-			counter_move++;
-
+		{
+			counter_move++;			
+		}
+		
 		move_side = -move_side;
 	}
 
@@ -1248,16 +1504,24 @@ public:
 		std::string UCI_command;
 
 		if (FEN.length())
-			if (UCI.toAnsiString().length() == 0)
+		{
+			if (UCI.length() == 0)
+			{
 				UCI_command = "position fen " + FEN + "\ngo depth " + std::to_string(ENGINE_DEPTH) + "\n";
+			}
 			else
-				UCI_command = "position fen " + FEN + " moves " + UCI.toAnsiString() + "\ngo depth " + std::to_string(ENGINE_DEPTH) + "\n";
-
+			{
+				UCI_command = "position fen " + FEN + " moves " + UCI + "\ngo depth " + std::to_string(ENGINE_DEPTH) + "\n";
+			}
+		}
 		else
-			UCI_command = "position startpos moves " + UCI.toAnsiString() + "\ngo depth " + std::to_string(ENGINE_DEPTH) + "\n";
+		{
+			UCI_command = "position startpos moves " + UCI + "\ngo depth " + std::to_string(ENGINE_DEPTH) + "\n";
+		}
 
 		WriteFile(pipin_w, UCI_command.c_str(), UCI_command.length(), &bytes, NULL);
-		Sleep(500);
+		Sleep(WAITTIME);
+
 		PeekNamedPipe(pipout_r, buffer, sizeof(buffer), &bytes, &bytes_available, NULL);
 		do
 		{
@@ -1288,18 +1552,81 @@ public:
 		if (proc_info.hThread != NULL) CloseHandle(proc_info.hThread);
 	}
 
+	void set_title()
+	{
+		std::string title;
+
+		title = std::to_string(counter_move) + ". ";
+		
+		if (counter_halfmove % 2 == 0)
+			title += "WHITE MOVE";
+		else
+			title += "BLACK MOVE";
+		
+		window.setTitle(title);
+	}
+
+	void log_PGN(int piece, Vector2i from, Vector2i to, int piece_enemy)
+	{
+		int piece_ABS;
+		std::string sfrom, sto;
+		Vector2i square_knight;
+		Vector2i square_rook;
+
+		sfrom = get_chess_coords_by_xy(from);
+		sto = get_chess_coords_by_xy(to);
+		piece_ABS = abs(piece);
+
+		if (PGN != "")
+			PGN += " ";
+
+		if (move_side == MOVE_SIDE_WHITE)
+			PGN += std::to_string(counter_move) + ". ";
+
+		if (piece_ABS != P)
+			PGN += get_piece_char(piece_ABS);
+			if (piece_ABS == N)
+			{
+				square_knight = is_square_checked_by_my_knight(to, true);
+
+				if (square_knight.x != -1 && square_knight.y != -1)
+					PGN += sfrom;
+			}
+			else if (piece_ABS == R)
+			{
+				square_rook = is_square_checked_by_my_rook(to, true);
+
+				if (square_rook.x != -1 && square_rook.y != -1)
+					PGN += sfrom;
+			}
+
+		if (piece_enemy != 0)
+		{
+			if (piece_ABS == P)
+				PGN += sfrom[0];
+
+			PGN += "x";
+		}
+
+		PGN += sto;
+
+		if (piece == P && sto[1] == '8')
+			PGN += "=Q";
+		else if (piece == -P && sto[1] == '1')
+			PGN += "=q";
+	}
+
 	void log_game(int piece, Vector2i from, Vector2i to, int piece_enemy)
 	{
-		String fromS, toS;
 		std::string sfrom, sto;
 
-		fromS = get_chess_coords_by_xy(from);
-		toS = get_chess_coords_by_xy(to);
-		sfrom = fromS.toAnsiString();
-		sto = toS.toAnsiString();
+		sfrom = get_chess_coords_by_xy(from);
+		sto = get_chess_coords_by_xy(to);
 
-		UCI += fromS;
-		UCI += toS;
+		UCI += sfrom;
+		UCI += sto;
+
+		log_PGN(piece, from, to, piece_enemy);
 
 		myPGN += get_piece_char(piece) + sfrom + sto;
 
@@ -1363,6 +1690,8 @@ public:
 				make_engine_move();
 				engine_turn = false;
 				// check_mate();
+
+				set_title();
 			}
 
 			while (window.pollEvent(event))
@@ -1388,13 +1717,16 @@ public:
 						make_engine_move();
 
 					if (event.key.code == Keyboard::P)
-						std::cout << "myPGN = " << std::endl << myPGN << std::endl;
+						std::cout << "PGN:" << std::endl << PGN << std::endl;
+
+					if (event.key.code == Keyboard::M)
+						std::cout << "myPGN:" << std::endl << myPGN << std::endl;
 
 					if (event.key.code == Keyboard::U)
-						std::cout << "UCI = " << std::endl << UCI.toAnsiString() << std::endl;
+						std::cout << "UCI:" << std::endl << UCI << std::endl;
 
 					if (event.key.code == Keyboard::F)
-						std::cout << "FEN = " << std::endl << get_FEN() << std::endl;
+						std::cout << "FEN:" << std::endl << get_FEN() << std::endl;
 
 					if (event.key.code == Keyboard::B)
 						print_board();
@@ -1403,7 +1735,12 @@ public:
 					{
 						play_with_engine = !play_with_engine;
 						if (play_with_engine)
+						{
 							engine_turn = true;
+							std::cout << "Движок включён" << std::endl;
+						}
+						else
+							std::cout << "Движок выключён" << std::endl;
 					}
 
 					if (event.key.code == Keyboard::G)
@@ -1413,11 +1750,11 @@ public:
 					}
 
 					if (event.key.code == Keyboard::Q)
-					{						
+					{
 						piece_selected = Q;
 					}
 
-					if (event.key.code == Keyboard::M)
+					if (event.key.code == Keyboard::C)
 					{
 
 						if (modify_board)
@@ -1537,10 +1874,12 @@ public:
 								counter_halfmove++;
 								if (move_side == MOVE_SIDE_BLACK)
 									counter_move++;
-								move_side = -move_side;
 
+								move_side = -move_side;
 								if (play_with_engine)
 									engine_turn = true;
+
+								set_title();
 							}
 						}
 						else
@@ -1565,22 +1904,9 @@ int main(int argc, char const *argv[])
 {
 	Chess c;
 
-	// startpos:
-	// c.set_FEN("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
-
-	// e2e4:
-	// c.set_FEN("rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1 ");
-
-	// enpassant: d2d4 e7e5 d4d5 c7c5
-	// c.set_FEN("rnbqkbnr/pp1p1ppp/8/2pPp3/8/8/PPP1PPPP/RNBQKBNR w KQkq c6 0 3");
-
-	//Reti
-	// c.set_FEN("7K/8/k1P5/7p/8/8/8/8 w - - 0 1");
-
-	// c.set_FEN("6k1/4Rpb1/6pp/1Np5/8/7P/2P2nPK/3r4 b - - 0 31");
-	// c.set_FEN("k7/RR6/8/8/8/8/K/8 w - - 0 32");
-	// c.set_FEN("4Q3/2b4r/7B/6R1/5k/8/7K/5q2");
-	// c.set_FEN("7k/P7/8/8/8/8/8/K7");
+	#ifdef defFEN
+		c.set_FEN(defFEN);
+	#endif
 
 	c.run();
 
