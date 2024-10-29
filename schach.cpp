@@ -24,6 +24,7 @@
 // C - режим редактирования позиции
 
 #include <iostream>
+#include <iomanip>
 #include <SFML/Graphics.hpp>
 
 #include <windows.h>
@@ -43,7 +44,8 @@ using namespace sf;
 // #define defFEN "4k3/8/8/4P3/3K4/8/R7/7r b - - 0 1"
 
 // задания:
-#define defFEN "3r3r/p1p1kppp/2Qb1n2/8/3qPPb1/2N5/PPP3PP/R1B2R1K b - - 1 15"
+// #define defFEN "rr2n1k1/1b1qbppp/nB2p3/1NPpP3/8/1N3P2/3QB1PP/R1R3K1 b - - 1 15"
+
 // #define defFEN "2rq1rk1/p3bppp/1p1p1n2/3Qp3/P3P3/1P3N2/2P1RPPP/R1B3K1 w - - 0 1"
 
 const int BLACKSIDE = 0;
@@ -104,6 +106,7 @@ class Chess
 	std::string PGN;
 	std::string myPGN;
 
+	double eval = 0.0;
 	int counter_move = 1;
 	int counter_move50 = 0;
 	int counter_halfmove = 0;
@@ -376,6 +379,7 @@ public:
 			}
 		}
 
+		get_engine_move();
 		set_title();
 	}
 
@@ -510,15 +514,19 @@ public:
 		ss.str(PGN);
 		while (ss >> last_move){}
 		last_move = " " + last_move;
+
+		if (myPGN.length() == 0)
+			return;
+
 		PGN.erase(PGN.find(last_move), last_move.length());
-// std::cout<<"da bin ich"<<std::endl;
 
 		if (move_side == MOVE_SIDE_BLACK)
 		{
 			ss.clear();
 			ss.str(PGN);
 			while (ss >> last_move){}
-			last_move = " " + last_move;
+			if (counter_move > 1)
+				last_move = " " + last_move;
 			PGN.erase(PGN.find(last_move), last_move.length());
 		}
 
@@ -526,7 +534,7 @@ public:
 		ss.str(myPGN);
 		while (ss >> last_move){}
 		myPGN.erase(myPGN.find(last_move), last_move.length() + 1);
-
+	
 		if (last_move == "") return;
 
 		if (last_move == "Ke1g1~~")
@@ -1498,6 +1506,7 @@ public:
 
 	std::string get_engine_move()
 	{
+		int n;
 		BYTE buffer[2048];
 		DWORD bytes, bytes_available;
 		std::string str;
@@ -1531,7 +1540,13 @@ public:
 			str += (char*)buffer;
 		}
 		while (bytes >= sizeof(buffer));
-		int n = str.find("bestmove");
+		
+		n = str.find("score cp");
+		eval = stod(str.substr(n + 9, 5)) / 100 * move_side;
+		std::cout<<str<<std::endl;
+		n = str.find("bestmove");
+		
+		set_title();
 
 		if (n != -1)
 			return str.substr(n + 9, 5);
@@ -1554,16 +1569,18 @@ public:
 
 	void set_title()
 	{
-		std::string title;
-
-		title = std::to_string(counter_move) + ". ";
+		std::stringstream ss;
+		
+		ss << counter_move << ". ";
 		
 		if (counter_halfmove % 2 == 0)
-			title += "WHITE MOVE";
+			ss << "WHITE MOVE";
 		else
-			title += "BLACK MOVE";
+			ss << "BLACK MOVE";
 		
-		window.setTitle(title);
+		ss << std::fixed << std::setprecision(2) << "   eval = " << eval;
+		
+		window.setTitle(ss.str());
 	}
 
 	void log_PGN(int piece, Vector2i from, Vector2i to, int piece_enemy)
@@ -1582,6 +1599,8 @@ public:
 
 		if (move_side == MOVE_SIDE_WHITE)
 			PGN += std::to_string(counter_move) + ". ";
+		else if(move_side == MOVE_SIDE_BLACK && PGN.length() == 0)
+			PGN += std::to_string(counter_move) + ". ... ";
 
 		if (piece_ABS != P)
 			PGN += get_piece_char(piece_ABS);
