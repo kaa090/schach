@@ -36,6 +36,7 @@ using namespace sf;
 
 // startpos:
 // #define defFEN "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
+#define defFEN "r6r/7k/8/8/1R6/8/8/1R2K3 w KQkq - 0 1"
 
 //Reti
 // #define defFEN "7K/8/k1P5/7p/8/8/8/8 w - - 0 1"
@@ -44,9 +45,7 @@ using namespace sf;
 // #define defFEN "4k3/8/8/4P3/3K4/8/R7/7r b - - 0 1"
 
 // задания:
-// #define defFEN "rr2n1k1/1b1qbppp/nB2p3/1NPpP3/8/1N3P2/3QB1PP/R1R3K1 b - - 1 15"
-
-// #define defFEN "2rq1rk1/p3bppp/1p1p1n2/3Qp3/P3P3/1P3N2/2P1RPPP/R1B3K1 w - - 0 1"
+// #define defFEN "r/r2n1k1/1b1qbppp/nB2p3/1NPpP3/8/1N3P2/3QB1PP/R1R3K1 b - - 1 1"
 
 const int BLACKSIDE = 0;
 const int ENGINE_DEPTH = 11; // [1, 20] белыми обыгрываю [1, 7]
@@ -117,6 +116,7 @@ class Chess
 	bool game_over = 0;
 	bool play_with_engine;
 	bool modify_board = 0;
+	bool flag_counter_move50_white = false;
 
 	PROCESS_INFORMATION proc_info;
 	HANDLE pipin_w, pipin_r, pipout_w, pipout_r;
@@ -534,7 +534,7 @@ public:
 		ss.str(myPGN);
 		while (ss >> last_move){}
 		myPGN.erase(myPGN.find(last_move), last_move.length() + 1);
-	
+
 		if (last_move == "") return;
 
 		if (last_move == "Ke1g1~~")
@@ -638,7 +638,8 @@ public:
 
 		if (counter_halfmove % 2 == 1)
 		{
-			counter_move--;			
+			counter_move--;
+			counter_move50--;
 		}
 
 		set_title();
@@ -765,7 +766,7 @@ public:
 		return rc;
 	}
 
-	Vector2i is_square_checked_by_my_rook(Vector2i to, bool own_rook = false)
+	Vector2i is_square_checked_by_my_rook(Vector2i from, Vector2i to, bool own_rook = false)
 	{
 		Vector2i square_rook;
 		square_rook.x = -1;
@@ -779,65 +780,76 @@ public:
 		else
 			rook = -move_side * R;
 
-		for (int i = to.x - 1; i >= 0; i--)
+		if (from.x > to.x)
 		{
-			if (board[to.y][i] == 0)
-				continue;
-
-			if (board[to.y][i] == rook)
+			for (int i = to.x - 1; i >= 0; i--)
 			{
-				square_rook.x = i;
-				square_rook.y = to.y;
-				return square_rook;
-			}
+				if (board[to.y][i] == 0)
+					continue;
 
-			break;
+				if (board[to.y][i] == rook)
+				{
+					square_rook.x = i;
+					square_rook.y = to.y;
+					return square_rook;
+				}
+
+				break;
+			}
+		}
+		else
+		{
+			for (int i = to.x + 1; i <= 7; i++)
+			{
+				if (board[to.y][i] == 0)
+					continue;
+
+				if (board[to.y][i] == rook)
+				{
+					square_rook.x = i;
+					square_rook.y = to.y;
+					return square_rook;
+				}
+
+				break;
+			}
 		}
 
-		for (int i = to.x + 1; i <= 7; i++)
+		if (from.y > to.y)
 		{
-			if (board[to.y][i] == 0)
-				continue;
-
-			if (board[to.y][i] == rook)
+			for (int i = to.y - 1; i >= 0; i--)
 			{
-				square_rook.x = i;
-				square_rook.y = to.y;
-				return square_rook;
-			}
+				if (board[i][to.x] == 0)
+					continue;
 
-			break;
+				if (board[i][to.x] == rook)
+				{
+					square_rook.x = to.x;
+					square_rook.y = i;
+					return square_rook;
+				}
+
+				break;
+			}
+		}
+		else
+		{
+			for (int i = to.y + 1; i <= 7; i++)
+			{
+				if (board[i][to.x] == 0)
+					continue;
+
+				if (board[i][to.x] == rook)
+				{
+					square_rook.x = to.x;
+					square_rook.y = i;
+					return square_rook;
+				}
+
+				break;
+			}
 		}
 
-		for (int i = to.y - 1; i >= 0; i--)
-		{
-			if (board[i][to.x] == 0)
-				continue;
-
-			if (board[i][to.x] == rook)
-			{
-				square_rook.x = to.x;
-				square_rook.y = i;
-				return square_rook;
-			}
-
-			break;
-		}
-
-		for (int i = to.y + 1; i <= 7; i++)
-		{
-			if (board[i][to.x] == 0)
-				continue;
-
-			if (board[i][to.x] == rook)
-			{
-				square_rook.x = to.x;
-				square_rook.y = i;
-				return square_rook;
-			}
-
-			break;
-		}
 
 		return square_rook;
 	}
@@ -1473,9 +1485,11 @@ public:
 
 		if (move_side == MOVE_SIDE_BLACK)
 		{
-			counter_move++;			
+			counter_move++;
 		}
-		
+
+		set_counter_move50(piece_selected_old, piece_enemy);
+
 		move_side = -move_side;
 	}
 
@@ -1540,12 +1554,12 @@ public:
 			str += (char*)buffer;
 		}
 		while (bytes >= sizeof(buffer));
-		
+
 		n = str.find("score cp");
 		eval = stod(str.substr(n + 9, 5)) / 100 * move_side;
-		std::cout<<str<<std::endl;
+
 		n = str.find("bestmove");
-		
+
 		set_title();
 
 		if (n != -1)
@@ -1570,16 +1584,16 @@ public:
 	void set_title()
 	{
 		std::stringstream ss;
-		
+
 		ss << counter_move << ". ";
-		
+
 		if (counter_halfmove % 2 == 0)
 			ss << "WHITE MOVE";
 		else
 			ss << "BLACK MOVE";
-		
+
 		ss << std::fixed << std::setprecision(2) << "   eval = " << eval;
-		
+
 		window.setTitle(ss.str());
 	}
 
@@ -1609,14 +1623,24 @@ public:
 				square_knight = is_square_checked_by_my_knight(to, true);
 
 				if (square_knight.x != -1 && square_knight.y != -1)
-					PGN += sfrom;
+				{
+					if (from.x != square_knight.x)
+						PGN += get_chess_coords_by_xy(from)[0];
+					else
+						PGN += get_chess_coords_by_xy(from)[1];
+				}
 			}
 			else if (piece_ABS == R)
 			{
-				square_rook = is_square_checked_by_my_rook(to, true);
+				square_rook = is_square_checked_by_my_rook(from, to, true);
 
 				if (square_rook.x != -1 && square_rook.y != -1)
-					PGN += sfrom;
+				{
+					if (from.x != square_rook.x)
+						PGN += get_chess_coords_by_xy(from)[0];
+					else
+						PGN += get_chess_coords_by_xy(from)[1];
+				}
 			}
 
 		if (piece_enemy != 0)
@@ -1633,6 +1657,26 @@ public:
 			PGN += "=Q";
 		else if (piece == -P && sto[1] == '1')
 			PGN += "=q";
+	}
+
+	void set_counter_move50(int piece, int piece_enemy)
+	{
+		if (abs(piece) == P || piece_enemy != 0)
+			counter_move50 = 0;
+
+		if (move_side == MOVE_SIDE_WHITE)
+		{
+			if (abs(piece) != P && piece_enemy == 0)
+				flag_counter_move50_white = true;
+			else
+				flag_counter_move50_white = false;
+		}
+
+		if (move_side == MOVE_SIDE_BLACK)
+		{
+			if (abs(piece) != P && piece_enemy == 0 && flag_counter_move50_white == true)
+				counter_move50++;
+		}
 	}
 
 	void log_game(int piece, Vector2i from, Vector2i to, int piece_enemy)
@@ -1890,11 +1934,16 @@ public:
 							if (modify_board == false)
 							{
 								log_game(piece, from, to, piece_enemy);
+
 								counter_halfmove++;
+
 								if (move_side == MOVE_SIDE_BLACK)
 									counter_move++;
 
+								set_counter_move50(piece, piece_enemy);
+
 								move_side = -move_side;
+
 								if (play_with_engine)
 									engine_turn = true;
 
